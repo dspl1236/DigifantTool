@@ -29,6 +29,7 @@ Reference tunes from YOU54F's PoloG40Digifant repo — useful for patch detectio
 |------|------|---------|-----------|-------|
 | `G40_StockEprom_with7kRevLimit.BIN` | G40 Mk3 stock | Rev limit only | 6995 RPM | `0xc662e1e9` |
 | `G40_StockEprom_withWOTidleLambdaMods.BIN` | G40 Mk3 stock | SNS lambda patches + rev limit | 7812 RPM | `0xe653d271` |
+| `G40_EubelTuningInGifhorn1995_MinorFuelTimingChanges_BoostCutRemoval_IdleIgnition.BIN` | G40 Mk3 stock | Ignition advance, boost cut removal, rev limit | 6848 RPM | `0xad0c5304` |
 
 ---
 
@@ -49,6 +50,33 @@ The gate routines check if a variable at `$01` exceeds `0x74` (116) — using lo
 position as a switch to control lambda behaviour separately at idle vs WOT.
 
 DigiTool detects all four patches and badges them individually in the Code Patches panel.
+
+
+---
+
+## Eubel Tuning Gifhorn 1995 Analysis (G40 Mk3)
+
+This tune contains a timestamped tuner inscription in the lower-half fill area:
+> `von UEBEL TUNING GIFHORN für Ingo Helf DO 30.11.1995 12:13:04 UE001`
+
+**ROM format:** 27C512 (64KB) — the 32KB tune is mirrored across both halves.
+Stock G40 ROMs use a 27C256 (32KB) with the lower 16KB as `0x41` fill.
+This image has actual data in the lower half (ECU reads upper half `0x4000–0x7FFF`).
+
+**45 bytes changed vs G40 Mk3 stock (upper half):**
+
+| Region | Changes | Detail |
+|--------|---------|--------|
+| Ignition Map | 11 cells | +3.5–5.2° BTDC advance in rows 11–12 (mid-load/high-load columns 0–5) |
+| Fuel Map | 2 cells | −14 to −15 raw at row 12 cols 6–7 (slight lean at mid-high load) |
+| Boost Cut (no-knock) | 10 entries | Raised from 176–251 → 235–255. Effectively disabled at high RPM |
+| Boost Cut (knock) | 17 entries | Uniform raise: 176 → 190 across all RPM (+9 kPa threshold) |
+| Rev Limit | 1 byte | 6601 → 6848 RPM (`0x11C1` → `0x111D`) |
+| Checksum | 2 bytes | `0x7F01`/`0x7F07` adjusted to compensate rev limit change |
+
+No lambda patches, no code injection. Pure map and threshold adjustments only.
+The boost cut table also extends two entries earlier than our current map definition
+(`0x450D–0x450E` were also modified) — suggests the no-knock table may be 19 entries, not 17.
 
 ---
 

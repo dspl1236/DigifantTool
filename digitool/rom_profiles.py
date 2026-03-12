@@ -114,6 +114,19 @@ KNOWN_CRCS: Dict[int, dict] = {
         variant=VARIANT_G40,        label="Polo G40 Mk3 — 7k Rev Limit",
         cal="TUNED",  rev_addr=0x5BC2, family=MAP_FAMILY_SINGLE, rpm_limit=6995,
     ),
+    # ── G40 Mk3 — Eubel Tuning Gifhorn 1995 ──────────────────────────────────
+    # Tuner label in ROM fill area: "von UEBEL TUNING GIFHORN für Ingo Helf DO 30.11.1995 12:13:04 UE001"
+    # 27C512 format: full 32KB ROM mirrored to lower+upper half (use upper 0x4000-0x7FFF)
+    # 45 bytes changed vs G40 stock (upper half):
+    #   Ignition: +3.5–5.2° BTDC across rows 11–12 cols 0–5 (mid-load ignition advance)
+    #   Fuel: -14–15 raw at row 12 cols 6–7 (mild lean at mid-high load)
+    #   Boost cut (no-knock): raised to near-max (effectively removed, 235–255)
+    #   Boost cut (knock): raised uniformly 176→190 across all RPM
+    #   Rev limit: 6601→6848 RPM (0x111D) + checksum bytes at 0x7F01/0x7F07
+    0xad0c5304: dict(
+        variant=VARIANT_G40,        label="Polo G40 Mk3 — Eubel Tuning Gifhorn 1995 (UE001)",
+        cal="TUNED",  rev_addr=0x5BC2, family=MAP_FAMILY_SINGLE, rpm_limit=6848,
+    ),
 }
 
 # Reset vector → family mapping (bytes at 0x7FFE–0x7FFF as hex string)

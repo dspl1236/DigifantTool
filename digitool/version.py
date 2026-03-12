@@ -7,6 +7,6 @@ Versioning:
   PATCH — bug fixes
 """
 
-APP_VERSION  = "0.4.7"
+APP_VERSION  = "0.4.8"
 APP_NAME     = "DigiTool"
 WINDOW_TITLE = f"DigiTool  v{APP_VERSION}  —  Digifant 1  G60 / G40  ECU Editor"
