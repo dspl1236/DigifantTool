@@ -977,89 +977,121 @@ select.editor-input option { background: var(--surface2); }
 <script>
 
 // ========== ROM FINGERPRINT DATABASE ==========
-const ROM_DB = [
-  {
-    id: 'G60_PG_STOCK_022B93EE',
-    name: 'Corrado G60 — Stock PG (022B_93EE)',
-    type: 'STOCK',
-    ignAvgMin: 15, ignAvgMax: 22,
-    fuelAvgMin: 145, fuelAvgMax: 165,
-    lambdaBytes: [0xBD, 0x62, 0xA7],  // closed loop ORI variant
-    digilag4433: [0x09, 0x55],         // ORI digilag
-  },
-  {
-    id: 'G60_PG_STOCK_GENERIC',
-    name: 'G60 PG — Stock (unmodified)',
-    type: 'STOCK',
-    ignAvgMin: 14, ignAvgMax: 23,
-    fuelAvgMin: 140, fuelAvgMax: 170,
-    lambdaBytes: null,  // any closed-loop
-    digilag4433: null,
-  },
-  {
-    id: 'G60_TRIPLE_OPENLOOP',
-    name: 'G60 Triple Map — Open Loop Tune',
-    type: 'TUNE',
-    lambdaBytes: [0x01, 0x01, 0x01],
-  },
-  {
-    id: 'G60_DIGILAG_REMOVED',
-    name: 'G60 — Digilag Removed',
-    type: 'TUNE',
-    digilag4433: [0x00, 0x00],
-  },
-];
+// Three-tier detection (same pattern as audi90-teensy-ecu/ecu_profiles.py):
+//   1. CRC32 match → HIGH confidence exact ROM ID
+//   2. Reset vector @ 0x7FFE → HIGH confidence variant ID
+//   3. Heuristics (rev limit address, fuel avg, fill pattern) → MEDIUM confidence
+
+// CRC32 of known stock ROMs (full 32KB)
+const KNOWN_CRCS = {
+  0x8c6fec45: { variant: 'G60', car: 'Corrado/Golf/Jetta G60',   engine: 'PG',  cal: '022B_93EE', type: 'STOCK', revAddr: 0x4BF2 },
+  0xb2bec49d: { variant: 'G40', car: 'Polo G40 Mk3',             engine: 'PY',  cal: 'G40_Mk3',  type: 'STOCK', revAddr: 0x5BC2 },
+  0xbf9d8fef: { variant: 'G40_MK2', car: 'Polo G40 Mk2',        engine: 'PY',  cal: 'G40_Mk2',  type: 'STOCK', revAddr: null   },
+};
+
+// Reset vectors @ 0x7FFE-0x7FFF for each variant
+const RESET_VECTORS = {
+  '45FD': { variant: 'G60',     confidence: 'HIGH', revAddr: 0x4BF2, note: 'G60 PG triple-map firmware' },
+  '54AA': { variant: 'G40',     confidence: 'HIGH', revAddr: 0x5BC2, note: 'G40 Mk3 standard firmware'  },
+  'E000': { variant: 'G40_MK2', confidence: 'HIGH', revAddr: null,   note: 'G40 Mk2 — different ROM structure, 250kPa MAP sensor' },
+};
+
+function crc32(data) {
+  let crc = 0xFFFFFFFF;
+  for (let i = 0; i < data.length; i++) {
+    crc ^= data[i];
+    for (let j = 0; j < 8; j++) crc = (crc & 1) ? (crc >>> 1) ^ 0xEDB88320 : crc >>> 1;
+  }
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+function detectVariant(data) {
+  // Tier 1: CRC32 exact match
+  const checksum = crc32(data);
+  const crcHex = checksum.toString(16).toLowerCase();
+  // Search KNOWN_CRCS by numeric value
+  for (const [key, entry] of Object.entries(KNOWN_CRCS)) {
+    if ((parseInt(key) >>> 0) === checksum) {
+      return { ...entry, confidence: 'HIGH', method: 'CRC32', crc32: crcHex };
+    }
+  }
+
+  // Tier 2: Reset vector
+  const vec = ((data[0x7FFE] << 8) | data[0x7FFF]).toString(16).toUpperCase().padStart(4,'0');
+  if (RESET_VECTORS[vec]) {
+    return { ...RESET_VECTORS[vec], method: `Reset vector 0x${vec}`, crc32: crcHex };
+  }
+
+  // Tier 3: Heuristics
+  const rl5bc2 = (data[0x5BC2]<<8)|data[0x5BC3];
+  const rl4bf2 = (data[0x4BF2]<<8)|data[0x4BF3];
+  const rpm5bc2 = (rl5bc2 > 0x0E00 && rl5bc2 < 0x1500) ? Math.round(30000000/rl5bc2) : null;
+  const rpm4bf2 = (rl4bf2 > 0x0E00 && rl4bf2 < 0x1500) ? Math.round(30000000/rl4bf2) : null;
+  const fuelAvg = Array.from({length:256},(_,i)=>data[0x4104+i]).reduce((a,b)=>a+b,0)/256;
+
+  if (rpm4bf2 && fuelAvg > 140) {
+    return { variant:'G60', car:'G60 (PG engine)', confidence:'MEDIUM',
+             method:'Heuristic: revlimit@4BF2 + fuel avg', revAddr:0x4BF2, crc32:crcHex };
+  }
+  if (rpm5bc2 && fuelAvg < 140) {
+    return { variant:'G40', car:'G40 (PY engine)', confidence:'MEDIUM',
+             method:'Heuristic: revlimit@5BC2 + fuel avg', revAddr:0x5BC2, crc32:crcHex };
+  }
+
+  return { variant:'UNKNOWN', car:'Unknown Digifant 1', confidence:'LOW',
+           method:'No match found', revAddr:null, crc32:crcHex };
+}
 
 function fingerprintROM(data) {
-  const ignAvg = Array.from({length:256},(_,i)=>(210-data[0x4004+i])/2.86).reduce((a,b)=>a+b,0)/256;
+  const variantInfo  = detectVariant(data);
+  const ignAvg  = Array.from({length:256},(_,i)=>(210-data[0x4004+i])/2.86).reduce((a,b)=>a+b,0)/256;
   const fuelAvg = Array.from({length:256},(_,i)=>data[0x4104+i]).reduce((a,b)=>a+b,0)/256;
   const lambdaBytes = [data[0x6269], data[0x626A], data[0x626B]];
   const digilag = [data[0x4433], data[0x4434]];
-  const isvDisable = data[0x6287] === 0x01;
-  const isOpenLoop = lambdaBytes[0]===0x01 && lambdaBytes[1]===0x01 && lambdaBytes[2]===0x01;
+  const isvDisable   = data[0x6287] === 0x01;
+  const isOpenLoop   = lambdaBytes[0]===0x01 && lambdaBytes[1]===0x01 && lambdaBytes[2]===0x01;
   const isDigilagOff = digilag[0]===0x00 && digilag[1]===0x00;
 
-  // Check if lower 16KB is all fill bytes (0x41 = 'A' or 0xFF)
-  const lowerFill = data[0] === 0x41 || data[0] === 0xFF;
-  const fillByte = data[0];
-  const lowerIsFill = lowerFill && Array.from(data.slice(0,0x4000)).every(b=>b===fillByte);
-
-  // Rev limit: search 0x4BF0-0x4BF4 and 0x5BC2 
-  const rl1Raw = (data[0x4BF2]<<8)|data[0x4BF3];
-  const rl2Raw = (data[0x5BC2]<<8)|data[0x5BC3];
-  // Use whichever gives a sane RPM (3000-10000)
-  const rl1RPM = rl1Raw > 0 ? Math.round(30000000/rl1Raw) : 0;
-  const rl2RPM = rl2Raw > 0 ? Math.round(30000000/rl2Raw) : 0;
-  const revRPM = (rl1RPM > 3000 && rl1RPM < 10000) ? rl1RPM : 
-                 (rl2RPM > 3000 && rl2RPM < 10000) ? rl2RPM : null;
-  const revAddr = (rl1RPM > 3000 && rl1RPM < 10000) ? 0x4BF2 : 0x5BC2;
+  // Rev limit from detected address
+  const revAddr = variantInfo.revAddr;
+  const revRaw  = revAddr ? ((data[revAddr]<<8)|data[revAddr+1]) : null;
+  const revRPM  = (revRaw && revRaw > 0x0E00 && revRaw < 0x1500) ? Math.round(30000000/revRaw) : null;
 
   const flags = [];
   if (isOpenLoop)   flags.push({label:'OPEN LOOP LAMBDA', color:'var(--accent2)'});
   if (isDigilagOff) flags.push({label:'DIGILAG REMOVED',  color:'var(--accent3)'});
   if (isvDisable)   flags.push({label:'ISV DISABLED',      color:'var(--accent)'});
+  if (variantInfo.variant === 'G40_MK2') flags.push({label:'G40 MK2 — OFFSETS UNCONFIRMED', color:'var(--accent2)'});
 
-  // Stock vs tune classification
-  let classification = 'UNKNOWN';
-  let classColor = 'var(--text-dim)';
-  let matchName = '';
+  // Variant label for UI
+  const variantLabel = variantInfo.variant === 'G60'     ? 'G60 PG'
+                     : variantInfo.variant === 'G40'     ? 'G40 PY'
+                     : variantInfo.variant === 'G40_MK2' ? 'G40 Mk2'
+                     : 'UNKNOWN';
 
-  if (!isOpenLoop && !isDigilagOff && ignAvg < 23 && ignAvg > 14 && fuelAvg > 140) {
-    classification = 'STOCK';
-    classColor = 'var(--accent3)';
-    matchName = 'G60 PG — Appears unmodified';
-  } else if (isOpenLoop || isDigilagOff || ignAvg > 23) {
-    classification = 'TUNED';
-    classColor = 'var(--accent)';
-    matchName = 'G60 PG — Performance tune detected';
+  // Classification: STOCK / TUNED / UNKNOWN within detected variant
+  let classification, classColor, matchName;
+  if (variantInfo.variant === 'G40_MK2') {
+    classification = 'STOCK'; classColor = 'var(--accent3)';
+    matchName = 'Polo G40 Mk2 — stock (map offsets not fully confirmed)';
+  } else if (!isOpenLoop && !isDigilagOff && ignAvg < 24 && fuelAvg > (variantInfo.variant==='G60' ? 140 : 110)) {
+    classification = 'STOCK'; classColor = 'var(--accent3)';
+    matchName = `${variantInfo.car} — appears unmodified`;
+  } else {
+    classification = 'TUNED'; classColor = 'var(--accent)';
+    matchName = `${variantInfo.car} — performance tune detected`;
   }
 
   return {
     ignAvg, fuelAvg, lambdaBytes, digilag,
     isOpenLoop, isDigilagOff, isvDisable,
-    lowerIsFill, fillByte, flags,
-    classification, classColor, matchName,
+    flags, classification, classColor, matchName,
     revRPM, revAddr,
+    variant: variantInfo.variant, variantLabel,
+    variantCar: variantInfo.car,
+    detectionMethod: variantInfo.method,
+    detectionConfidence: variantInfo.confidence,
+    crc32: variantInfo.crc32,
   };
 }
 
@@ -1342,10 +1374,15 @@ function renderOverview(rom) {
   const flagsHtml = fp.flags.map(f=>`<span style="background:rgba(232,184,75,0.1);color:${f.color};padding:1px 6px;border-radius:2px;font-size:10px;margin-right:4px">${f.label}</span>`).join('');
 
   document.getElementById('checksumPanel').innerHTML = `
-    <div style="margin-bottom:8px">
-      <span style="color:var(--text-dim)">Classification: </span>
+    <div style="margin-bottom:10px;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+      <span style="color:var(--accent);font-family:var(--sans);font-size:22px;font-weight:900;letter-spacing:1px">${fp.variantLabel}</span>
       <span style="color:${fp.classColor};font-weight:bold">${fp.classification}</span>
-      <span style="color:var(--text-dim);font-size:11px;margin-left:8px">${fp.matchName}</span>
+      <span style="color:var(--text-dim);font-size:11px">${fp.matchName}</span>
+    </div>
+    <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-bottom:8px">
+      Detected via: <span style="color:var(--accent)">${fp.detectionMethod}</span>
+      &nbsp;|&nbsp; Confidence: <span style="color:${fp.detectionConfidence==='HIGH'?'var(--accent3)':fp.detectionConfidence==='MEDIUM'?'var(--accent)':'var(--accent2)'}">${fp.detectionConfidence}</span>
+      &nbsp;|&nbsp; CRC32: <span style="color:var(--accent)">0x${fp.crc32}</span>
     </div>
     <div style="margin-bottom:6px">${flagsHtml || '<span style="color:var(--text-dim);font-size:11px">No code patches detected</span>'}</div>
     <div style="margin-top:8px;color:var(--text-dim)">
@@ -1365,9 +1402,11 @@ function renderOverview(rom) {
   document.getElementById('ecuInfo').innerHTML = `
     <div class="row"><span class="label">File</span><span class="val">${roms[activeFileIdx].name.substring(0,18)}</span></div>
     <div class="row"><span class="label">Size</span><span class="val green">32768 B ✓</span></div>
+    <div class="row"><span class="label">Variant</span><span class="val" style="color:var(--accent);font-weight:bold">${fp.variantLabel}</span></div>
     <div class="row"><span class="label">Type</span><span class="val" style="color:${fp.classColor}">${fp.classification}</span></div>
     <div class="row"><span class="label">Rev Limit</span><span class="val">${fp.revRPM ? fp.revRPM+' RPM' : '??'}</span></div>
     <div class="row"><span class="label">Lambda</span><span class="val" style="color:${fp.isOpenLoop?'var(--accent2)':'var(--accent3)'}">${fp.isOpenLoop?'OPEN':'CLOSED'}</span></div>
+    <div class="row"><span class="label">Detect</span><span class="val" style="color:${fp.detectionConfidence==='HIGH'?'var(--accent3)':fp.detectionConfidence==='MEDIUM'?'var(--accent)':'var(--accent2)'}">${fp.detectionConfidence}</span></div>
     <div class="row"><span class="label">Checksum</span><span class="val" style="color:${csOK?'var(--accent3)':'var(--accent2)'}">${csOK?'VALID':'MISMATCH'}</span></div>
   `;
 }
