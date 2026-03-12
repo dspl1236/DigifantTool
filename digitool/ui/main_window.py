@@ -209,8 +209,9 @@ class MainWindow(QMainWindow):
         if self._rom is None:
             return
 
-        # Collect any pending map edits first
-        rom_32k = bytes(self.tab_maps.write_back())
+        # Collect any pending map edits; fall back to current ROM if nothing changed
+        written = self.tab_maps.write_back()
+        rom_32k = bytes(written) if written else bytes(self._rom)
 
         if len(rom_32k) != 0x8000:
             QMessageBox.critical(

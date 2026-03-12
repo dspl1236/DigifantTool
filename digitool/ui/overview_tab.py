@@ -185,6 +185,43 @@ class OverviewTab(QWidget):
             self.flags_layout.addLayout(row)
         root.addWidget(grp_flags)
 
+        # ── Map address table (collapsible) ──────────────────────────────────
+        from PyQt5.QtWidgets import QPlainTextEdit
+        grp_maps = QGroupBox("Map Verification")
+        ml = QVBoxLayout(grp_maps)
+        ml.setSpacing(4)
+
+        # Toggle button row
+        map_hdr = QHBoxLayout()
+        self.lbl_map_summary = QLabel("No ROM loaded")
+        self.lbl_map_summary.setStyleSheet("color: #3d5068; font-size: 11px; font-family: Consolas;")
+        self.btn_map_toggle = QPushButton("Map Addresses ▼")
+        self.btn_map_toggle.setFlat(True)
+        self.btn_map_toggle.setCheckable(True)
+        self.btn_map_toggle.setChecked(False)
+        self.btn_map_toggle.setStyleSheet(
+            "QPushButton { color: #00d4ff; font-size: 11px; border: none; padding: 0; }"
+            "QPushButton:hover { color: #bccdd8; }"
+        )
+        self.btn_map_toggle.toggled.connect(self._toggle_map_table)
+        map_hdr.addWidget(self.lbl_map_summary)
+        map_hdr.addStretch()
+        map_hdr.addWidget(self.btn_map_toggle)
+        ml.addLayout(map_hdr)
+
+        # Monospaced table (hidden by default)
+        self.wgt_map_table = QPlainTextEdit()
+        self.wgt_map_table.setReadOnly(True)
+        self.wgt_map_table.setMaximumHeight(220)
+        self.wgt_map_table.setFont(QFont("Courier New", 10))
+        self.wgt_map_table.setStyleSheet(
+            "QPlainTextEdit { background: #0d1117; color: #bccdd8; "
+            "border: 1px solid #1a2332; font-family: 'Courier New', monospace; }"
+        )
+        self.wgt_map_table.setVisible(False)
+        ml.addWidget(self.wgt_map_table)
+        root.addWidget(grp_maps)
+
         root.addStretch()
 
     # ── Public API ────────────────────────────────────────────────────────────
@@ -238,6 +275,9 @@ class OverviewTab(QWidget):
         self.btn_save_as.setEnabled(True)
         self.btn_save_512.setEnabled(True)
 
+        # Map address table
+        self._build_map_table(result, rom)
+
     def clear(self):
         self._result = None
         self._rom    = None
@@ -255,6 +295,76 @@ class OverviewTab(QWidget):
         self.btn_save.setEnabled(False)
         self.btn_save_as.setEnabled(False)
         self.btn_save_512.setEnabled(False)
+        self.lbl_map_summary.setText("No ROM loaded")
+        self.wgt_map_table.setPlainText("")
+
+    def _toggle_map_table(self, checked: bool):
+        self.wgt_map_table.setVisible(checked)
+        self.btn_map_toggle.setText("Map Addresses ▲" if checked else "Map Addresses ▼")
+
+    def _build_map_table(self, result: DetectionResult, rom: bytes):
+        """Build the map address verification table and update summary label."""
+        maps = result.maps
+        if not maps:
+            self.lbl_map_summary.setText("No map definitions for this variant")
+            self.wgt_map_table.setPlainText("")
+            return
+
+        # Count maps that read non-fill data (first byte != 0x41 fill)
+        ok_count = 0
+        for m in maps:
+            try:
+                first = rom[m.data_addr]
+                if first != 0x41:
+                    ok_count += 1
+            except IndexError:
+                pass
+
+        total = len(maps)
+        summary_color = "#2dff6e" if ok_count == total else "#e8b84b"
+        self.lbl_map_summary.setText(
+            f"{ok_count}/{total} maps verified  ·  {result.family}  ·  {total} entries"
+        )
+        self.lbl_map_summary.setStyleSheet(
+            f"color: {summary_color}; font-size: 11px; font-family: Consolas;"
+        )
+
+        # Build table text — matches reference app style
+        lines = [
+            f"  {'MAP NAME':<32}  {'DATA':>6}  {'END':>6}  {'SZ':>5}  TYPE   STATUS",
+            "  " + "─" * 72,
+        ]
+        for m in maps:
+            end_addr  = m.data_addr + m.size - 1
+            map_type  = f"{m.rows}×{m.cols}" if m.rows > 1 else f"1×{m.cols}"
+            try:
+                first = rom[m.data_addr]
+                status = "OK" if first != 0x41 else "FILL?"
+                s_color = "✓" if first != 0x41 else "?"
+            except IndexError:
+                status = "OOB"
+                s_color = "!"
+            lines.append(
+                f"  {m.name:<32}  0x{m.data_addr:04X}  0x{end_addr:04X}  "
+                f"{m.size:>4}B  {map_type:<6}  {s_color} {status}"
+            )
+
+        # Rev limit line
+        if result.rev_addr:
+            try:
+                hi  = rom[result.rev_addr]
+                lo  = rom[result.rev_addr + 1]
+                val = (hi << 8) | lo
+                rpm = round(30_000_000 / val) if val else 0
+                lines.append("  " + "─" * 72)
+                lines.append(
+                    f"  {'Rev Limit':<32}  0x{result.rev_addr:04X}  0x{result.rev_addr+1:04X}"
+                    f"     2B  16-bit   ✓ {rpm:,} RPM  (0x{val:04X})"
+                )
+            except Exception:
+                pass
+
+        self.wgt_map_table.setPlainText("\n".join(lines))
 
     def _apply_rev_limit(self):
         """Write new rev limit to ROM bytearray and refresh display."""
