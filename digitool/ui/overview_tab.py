@@ -5,14 +5,15 @@ ROM overview — variant, type, rev limit, code flags, checksum status.
 
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
-    QLabel, QPushButton, QFileDialog, QSizePolicy, QFrame
+    QLabel, QPushButton, QFileDialog, QSizePolicy, QFrame,
+    QSpinBox, QMessageBox
 )
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QFont
 
 from digitool.rom_profiles import (
     DetectionResult, VARIANT_LABELS, CODE_PATCHES,
-    compute_checksum, KNOWN_CRCS
+    compute_checksum, KNOWN_CRCS, rpm_to_rev_limit
 )
 
 
@@ -37,6 +38,7 @@ class OverviewTab(QWidget):
     sig_open_rom  = pyqtSignal()
     sig_save_rom  = pyqtSignal()
     sig_save_as   = pyqtSignal()
+    sig_rom_mutated = pyqtSignal(object)   # emitted when rev limit or patches written in-place
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -114,7 +116,32 @@ class OverviewTab(QWidget):
         self.lbl_rev = QLabel("— RPM")
         self.lbl_rev.setFont(QFont("Consolas", 14))
         self.lbl_rev.setStyleSheet("color: #e8b84b;")
+
+        self.spin_rev = QSpinBox()
+        self.spin_rev.setRange(1000, 9000)
+        self.spin_rev.setSingleStep(50)
+        self.spin_rev.setSuffix(" RPM")
+        self.spin_rev.setEnabled(False)
+        self.spin_rev.setFixedWidth(140)
+        self.spin_rev.setStyleSheet(
+            "QSpinBox { background: #111820; color: #e8b84b; border: 1px solid #e8b84b; "
+            "padding: 4px 8px; font-family: Consolas; font-size: 13px; }"
+            "QSpinBox:disabled { border-color: #1a2332; color: #3d5068; }"
+            "QSpinBox::up-button, QSpinBox::down-button { width: 18px; background: #1a2332; }"
+        )
+        self.btn_apply_rev = QPushButton("Apply")
+        self.btn_apply_rev.setEnabled(False)
+        self.btn_apply_rev.setFixedWidth(80)
+        self.btn_apply_rev.clicked.connect(self._apply_rev_limit)
+        self.lbl_rev_hint = QLabel("Edit and click Apply to write to ROM")
+        self.lbl_rev_hint.setStyleSheet("color: #3d5068; font-size: 10px;")
+
         rl.addWidget(self.lbl_rev)
+        rl.addSpacing(20)
+        rl.addWidget(self.spin_rev)
+        rl.addWidget(self.btn_apply_rev)
+        rl.addSpacing(12)
+        rl.addWidget(self.lbl_rev_hint)
         rl.addStretch()
         root.addWidget(grp_rev)
 
@@ -165,6 +192,15 @@ class OverviewTab(QWidget):
         # Rev limit
         rpm = result.rev_limit_rpm(rom)
         self.lbl_rev.setText(f"{rpm:,} RPM" if rpm else "Unknown")
+        if rpm and result.rev_addr is not None:
+            self.spin_rev.blockSignals(True)
+            self.spin_rev.setValue(rpm)
+            self.spin_rev.blockSignals(False)
+            self.spin_rev.setEnabled(True)
+            self.btn_apply_rev.setEnabled(True)
+        else:
+            self.spin_rev.setEnabled(False)
+            self.btn_apply_rev.setEnabled(False)
 
         # Checksum
         crc = compute_checksum(rom)
@@ -196,11 +232,38 @@ class OverviewTab(QWidget):
         self.lbl_conf.setText("—")
         self.lbl_crc.setText("—")
         self.lbl_rev.setText("— RPM")
+        self.spin_rev.setEnabled(False)
+        self.btn_apply_rev.setEnabled(False)
         self._set_badge(self.badge_cs, "NO ROM", "#3d5068")
         for badge in self._flag_badges.values():
             self._set_badge(badge, "—", "#3d5068")
         self.btn_save.setEnabled(False)
         self.btn_save_as.setEnabled(False)
+
+    def _apply_rev_limit(self):
+        """Write new rev limit to ROM bytearray and refresh display."""
+        if self._result is None or self._rom is None:
+            return
+        if self._result.rev_addr is None:
+            return
+        new_rpm = self.spin_rev.value()
+        raw16   = rpm_to_rev_limit(new_rpm)
+        addr    = self._result.rev_addr - 0x4000   # ROM base offset
+        if isinstance(self._rom, (bytes, bytearray)):
+            rom_ba = bytearray(self._rom)
+            rom_ba[addr]     = (raw16 >> 8) & 0xFF
+            rom_ba[addr + 1] = raw16 & 0xFF
+            self._rom = bytes(rom_ba)
+        actual_rpm = round(30_000_000 / raw16) if raw16 else 0
+        self.lbl_rev.setText(f"{actual_rpm:,} RPM")
+        self.lbl_rev_hint.setText(
+            f"Written 0x{raw16:04X} @ 0x{self._result.rev_addr:04X} — save ROM to persist"
+        )
+        self.lbl_rev_hint.setStyleSheet("color: #2dff6e; font-size: 10px;")
+        # Propagate back to main window via signal so save includes this edit
+        self.sig_rom_mutated.emit(self._rom)
+
+
 
     @staticmethod
     def _set_badge(badge: QLabel, text: str, color: str):

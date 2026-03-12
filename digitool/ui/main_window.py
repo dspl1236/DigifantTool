@@ -94,6 +94,10 @@ class MainWindow(QMainWindow):
         self.tab_overview.sig_open_rom.connect(self._open_rom)
         self.tab_overview.sig_save_rom.connect(self._save_rom)
         self.tab_overview.sig_save_as.connect(self._save_as)
+        self.tab_overview.sig_rom_mutated.connect(self._on_rom_mutated)
+
+        # Enable drag-and-drop of .BIN files onto the window
+        self.setAcceptDrops(True)
 
     def _setup_status_bar(self):
         self.statusbar = QStatusBar()
@@ -189,3 +193,33 @@ class MainWindow(QMainWindow):
             self.statusbar.showMessage(f"Saved as: {path}", 4000)
         except OSError as e:
             QMessageBox.critical(self, "Save Error", str(e))
+
+    def _on_rom_mutated(self, new_rom):
+        """Called when overview tab writes rev limit or patches in-place."""
+        self._rom = bytearray(new_rom)
+
+    # ── Drag and drop ─────────────────────────────────────────────────────────
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            urls = event.mimeData().urls()
+            if any(u.toLocalFile().lower().endswith(".bin") for u in urls):
+                event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        for url in event.mimeData().urls():
+            path = url.toLocalFile()
+            if path.lower().endswith(".bin"):
+                try:
+                    with open(path, "rb") as f:
+                        data = f.read()
+                    if len(data) == 0x8000:
+                        self._load_rom_data(path, data)
+                    else:
+                        QMessageBox.warning(
+                            self, "Wrong Size",
+                            f"Expected 32 KB, got {len(data):,} bytes."
+                        )
+                except OSError as e:
+                    QMessageBox.critical(self, "Error", str(e))
+                break
