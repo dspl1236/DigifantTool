@@ -94,6 +94,7 @@ class MainWindow(QMainWindow):
         self.tab_overview.sig_open_rom.connect(self._open_rom)
         self.tab_overview.sig_save_rom.connect(self._save_rom)
         self.tab_overview.sig_save_as.connect(self._save_as)
+        self.tab_overview.sig_save_512.connect(self._save_27c512)
         self.tab_overview.sig_rom_mutated.connect(self._on_rom_mutated)
 
         # Enable drag-and-drop of .BIN files onto the window
@@ -197,6 +198,59 @@ class MainWindow(QMainWindow):
     def _on_rom_mutated(self, new_rom):
         """Called when overview tab writes rev limit or patches in-place."""
         self._rom = bytearray(new_rom)
+
+    def _save_27c512(self):
+        """
+        Export a 64 KB file for burning to a 27C512 EPROM.
+        The 32 KB ROM is written twice (lower half + upper half = mirror).
+        The ECU's address decoder typically reads the upper half (0x8000-0xFFFF),
+        but both halves are identical so either works.
+        """
+        if self._rom is None:
+            return
+
+        # Collect any pending map edits first
+        rom_32k = bytes(self.tab_maps.write_back())
+
+        if len(rom_32k) != 0x8000:
+            QMessageBox.critical(
+                self, "Error",
+                f"ROM is {len(rom_32k):,} bytes — expected 32,768 bytes (32 KB).\n"
+                "Cannot create 27C512 image."
+            )
+            return
+
+        # Suggest filename based on original
+        base = ""
+        if self._rom_path:
+            import os
+            stem = os.path.splitext(os.path.basename(self._rom_path))[0]
+            base = stem + "_27C512.bin"
+
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save 27C512 Image (64 KB)", base,
+            "BIN Files (*.bin *.BIN);;All Files (*)"
+        )
+        if not path:
+            return
+
+        # Mirror: ROM + ROM = 64 KB
+        image_64k = rom_32k + rom_32k
+
+        try:
+            with open(path, "wb") as f:
+                f.write(image_64k)
+            self.statusbar.showMessage(
+                f"Saved 27C512 image: {path}  ({len(image_64k):,} bytes — 32KB × 2 mirror)", 6000
+            )
+            QMessageBox.information(
+                self, "27C512 Image Saved",
+                f"64 KB image written to:\n{path}\n\n"
+                f"Contents: 32 KB ROM mirrored twice.\n"
+                f"Ready to burn to a 27C512 EPROM."
+            )
+        except OSError as e:
+            QMessageBox.critical(self, "Save Error", str(e))
 
     # ── Drag and drop ─────────────────────────────────────────────────────────
 

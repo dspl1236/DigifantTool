@@ -35,9 +35,10 @@ class OverviewTab(QWidget):
     code flags, checksum validity. Also hosts the Open / Save buttons.
     """
 
-    sig_open_rom  = pyqtSignal()
-    sig_save_rom  = pyqtSignal()
-    sig_save_as   = pyqtSignal()
+    sig_open_rom    = pyqtSignal()
+    sig_save_rom    = pyqtSignal()
+    sig_save_as     = pyqtSignal()
+    sig_save_512    = pyqtSignal()          # export 64 KB mirrored for 27C512
     sig_rom_mutated = pyqtSignal(object)   # emitted when rev limit or patches written in-place
 
     def __init__(self, parent=None):
@@ -65,16 +66,29 @@ class OverviewTab(QWidget):
         self.btn_open = QPushButton("⊕  Open ROM (.BIN)")
         self.btn_open.setObjectName("btn_open")
         self.btn_open.clicked.connect(self.sig_open_rom)
-        self.btn_save = QPushButton("↓  Save ROM")
+        self.btn_save = QPushButton("↓  Save 27C256  (32 KB)")
         self.btn_save.setObjectName("btn_save")
         self.btn_save.setEnabled(False)
         self.btn_save.clicked.connect(self.sig_save_rom)
         self.btn_save_as = QPushButton("↓  Save As…")
         self.btn_save_as.setEnabled(False)
         self.btn_save_as.clicked.connect(self.sig_save_as)
+
+        self.btn_save_512 = QPushButton("↓  Save 27C512  (64 KB mirrored)")
+        self.btn_save_512.setObjectName("btn_save_512")
+        self.btn_save_512.setEnabled(False)
+        self.btn_save_512.setToolTip(
+            "Writes the 32 KB ROM twice (mirrored) into a 64 KB file.\n"
+            "Required for burning to a 27C512 EPROM.\n"
+            "The ECU reads the upper half; both halves are identical."
+        )
+        self.btn_save_512.clicked.connect(self.sig_save_512)
+
         fl.addWidget(self.btn_open)
         fl.addWidget(self.btn_save)
         fl.addWidget(self.btn_save_as)
+        fl.addSpacing(16)
+        fl.addWidget(self.btn_save_512)
         fl.addStretch()
         root.addWidget(grp_file)
 
@@ -222,6 +236,7 @@ class OverviewTab(QWidget):
 
         self.btn_save.setEnabled(True)
         self.btn_save_as.setEnabled(True)
+        self.btn_save_512.setEnabled(True)
 
     def clear(self):
         self._result = None
@@ -239,6 +254,7 @@ class OverviewTab(QWidget):
             self._set_badge(badge, "—", "#3d5068")
         self.btn_save.setEnabled(False)
         self.btn_save_as.setEnabled(False)
+        self.btn_save_512.setEnabled(False)
 
     def _apply_rev_limit(self):
         """Write new rev limit to ROM bytearray and refresh display."""
