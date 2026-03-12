@@ -114,6 +114,14 @@ KNOWN_CRCS: Dict[int, dict] = {
         variant=VARIANT_G40,        label="Polo G40 Mk3 — 7k Rev Limit",
         cal="TUNED",  rev_addr=0x5BC2, family=MAP_FAMILY_SINGLE, rpm_limit=6995,
     ),
+    # ── G60 single-map known tunes ───────────────────────────────────────────
+    # Saab 900 T16 turbo conversion — Bosch 0280150403 (504cc @ 3bar injectors)
+    # G60 single-map firmware base, 8000 RPM rev limit, wholesale map + firmware rewrite
+    # No 200/250 kPa sensor constant found — firmware lambda/sensor paths heavily modified
+    0xab48a0a8: dict(
+        variant=VARIANT_G60,        label="Saab 900 T16 Turbo — Bosch 403 504cc",
+        cal="TUNED",  rev_addr=0x4BF2, family=MAP_FAMILY_SINGLE, rpm_limit=8000,
+    ),
     # ── G40 Mk3 — Eubel Tuning Gifhorn 1995 ──────────────────────────────────
     # Tuner label in ROM fill area: "von UEBEL TUNING GIFHORN für Ingo Helf DO 30.11.1995 12:13:04 UE001"
     # 27C512 format: full 32KB ROM mirrored to lower+upper half (use upper 0x4000-0x7FFF)
