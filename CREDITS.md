@@ -1,6 +1,6 @@
 # Credits & Acknowledgements
 
-DigifantTool stands on the shoulders of years of community reverse engineering work.
+DigiTool stands on the shoulders of years of community reverse engineering work.
 These are the people and projects that made it possible.
 
 ---
@@ -14,7 +14,7 @@ These are the people and projects that made it possible.
 The most comprehensive public decompilation of the Digifant 1 controller available.
 Yousaf's binary decompilation work with IDA Pro, map table documentation, code
 modification guides, and collection of stock G40 EPROMs form the primary technical
-foundation for DigifantTool's map offsets, code patch detection, and ROM fingerprinting.
+foundation for DigiTool's map offsets, code patch detection, and ROM fingerprinting.
 
 Specific contributions referenced:
 - G40 / G60 map table locations and addresses (ignition, fuel, RPM scalar, boost cut, ISV, WOT enrichment, corrections)
@@ -80,5 +80,5 @@ cross-references during development.
 - VW/Bosch factory firmware is copyright Bosch GmbH / Volkswagen AG.
 - Stock ROM files in `roms/` are provided for educational and restoration purposes,
   consistent with long-standing Digifant community practice.
-- DigifantTool (this repo) is an independent open-source project with no affiliation
+- DigiTool (this repo) is an independent open-source project with no affiliation
   to Volkswagen AG, Bosch GmbH, or any tuner / tool listed above.

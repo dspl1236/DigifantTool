@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DigifantTool — G60 ECU Editor</title>
+<title>DigiTool v0.3.4 — G60 / G40 ECU Editor</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@400;600;700;900&family=Barlow:wght@400;500&display=swap');
 
@@ -630,7 +630,7 @@ select.editor-input option { background: var(--surface2); }
 <body>
 
 <header>
-  <div class="logo">DigifantTool <span>G60 / G40 ECU EDITOR v0.1</span></div>
+  <div class="logo">DigiTool <span style="font-size:10px;opacity:0.5;vertical-align:middle">v0.3.4</span> <span>G60 / G40 ECU EDITOR</span></div>
   <div class="header-status">
     <span id="statusDot" class="status-dot"></span>
     <span id="statusText">NO ROM LOADED</span>
@@ -991,6 +991,8 @@ select.editor-input option { background: var(--surface2); }
 </div>
 
 <script>
+  const APP_VERSION = '0.3.4';
+  const APP_NAME = 'DigiTool';
 
 // ========== ROM FINGERPRINT DATABASE ==========
 // Three-tier detection (same pattern as audi90-teensy-ecu/ecu_profiles.py):

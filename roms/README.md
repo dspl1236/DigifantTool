@@ -1,6 +1,6 @@
 # Reference ROMs
 
-Stock / factory EPROM dumps for use as baselines in DigifantTool.
+Stock / factory EPROM dumps for use as baselines in DigiTool.
 
 These are 27C256 (32KB) dumps of unmodified factory EPROMs from Digifant 1 ECUs.
 Provided for reference, comparison, and verification purposes only.

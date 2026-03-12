@@ -1,4 +1,4 @@
-# DigifantTool
+# DigiTool
 
 **Digifant 1 ECU ROM Editor** — for VW/Audi G60 and G40 Digifant-1 ECUs (Corrado G60, Polo G40, PG-engine variants)
 
@@ -46,7 +46,7 @@
 ## Usage
 
 ### Web Version
-Open `app/DigifantTool.html` in any modern browser. No install required.
+Open `app/DigiTool.html` in any modern browser. No install required.
 
 ### Desktop App (Windows .exe)
 Download the latest release from the [Releases](../../releases) page.

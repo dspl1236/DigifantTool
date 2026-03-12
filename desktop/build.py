@@ -1,7 +1,7 @@
 """
-Build script for DigifantTool desktop exe.
+Build script for DigiTool desktop exe.
 Run: python build.py
-Produces: dist/DigifantTool.exe (Windows) or dist/DigifantTool (Linux/Mac)
+Produces: dist/DigiTool.exe (Windows) or dist/DigiTool (Linux/Mac)
 """
 import subprocess
 import sys
@@ -21,7 +21,7 @@ def run(cmd):
         sys.exit(result.returncode)
 
 def main():
-    print("=== DigifantTool Build ===")
+    print("=== DigiTool Build ===")
     
     # Install deps
     run([sys.executable, '-m', 'pip', 'install', 'pywebview', 'pyinstaller', '--quiet'])
@@ -33,7 +33,7 @@ def main():
         sys.executable, '-m', 'PyInstaller',
         '--onefile',
         '--windowed' if is_windows else '--onefile',
-        '--name', 'DigifantTool',
+        '--name', 'DigiTool',
         '--distpath', DIST_DIR,
         '--workpath', os.path.join(DESKTOP_DIR, 'build_tmp'),
         '--specpath', DESKTOP_DIR,
@@ -51,7 +51,7 @@ def main():
 
     run(cmd)
 
-    exe = os.path.join(DIST_DIR, 'DigifantTool.exe' if is_windows else 'DigifantTool')
+    exe = os.path.join(DIST_DIR, 'DigiTool.exe' if is_windows else 'DigiTool')
     if os.path.exists(exe):
         size_mb = os.path.getsize(exe) / 1_000_000
         print(f"\n✓ Build complete: {exe} ({size_mb:.1f} MB)")

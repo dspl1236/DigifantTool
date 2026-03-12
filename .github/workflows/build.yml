@@ -1,4 +1,4 @@
-name: Build DigifantTool Windows EXE
+name: Build DigiTool Windows EXE
 
 on:
   push:
@@ -34,7 +34,7 @@ jobs:
           v = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', txt).group(1)
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
             f.write(f"num={v}\n")
-            f.write(f"exe=DigifantTool-v{v}\n")
+            f.write(f"exe=DigiTool-v{v}\n")
 
       - name: Install Python dependencies
         run: |
@@ -48,7 +48,7 @@ jobs:
             --onefile `
             --windowed `
             --name "${{ steps.ver.outputs.exe }}" `
-            --add-data "..\app\DigifantTool.html;app" `
+            --add-data "..\app\DigiTool.html;app" `
             --hidden-import "webview.platforms.winforms" `
             --hidden-import "clr" `
             main.py
@@ -59,7 +59,7 @@ jobs:
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v4
         with:
-          name: DigifantTool-Windows
+          name: DigiTool-Windows
           path: desktop/dist/${{ steps.ver.outputs.exe }}.exe
           retention-days: 90
 
@@ -74,7 +74,7 @@ jobs:
       - name: Download EXE
         uses: actions/download-artifact@v4
         with:
-          name: DigifantTool-Windows
+          name: DigiTool-Windows
           path: dist/
 
       - name: Get short commit SHA
@@ -92,14 +92,14 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
-          name: "DigifantTool v${{ needs.build-windows.outputs.version }} — Latest Build"
+          name: "DigiTool v${{ needs.build-windows.outputs.version }} — Latest Build"
           body: |
-            ## DigifantTool v${{ needs.build-windows.outputs.version }}
+            ## DigiTool v${{ needs.build-windows.outputs.version }}
 
             **Commit:** `${{ steps.sha.outputs.short }}` — ${{ github.event.head_commit.message }}
 
             ### Download & Run — No Install Needed
-            Just download `DigifantTool-v${{ needs.build-windows.outputs.version }}.exe` and run it.
+            Just download `DigiTool-v${{ needs.build-windows.outputs.version }}.exe` and run it.
             No Python, no browser required. Drag your `.BIN` ROM file into the app.
 
             ### Features

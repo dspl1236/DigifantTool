@@ -1,5 +1,5 @@
 """
-DigifantTool Desktop — Digifant 1 G60/G40 ECU Editor
+DigiTool Desktop — Digifant 1 G60/G40 ECU Editor
 Wraps the HTML tool in a native desktop window using pywebview.
 """
 import sys
@@ -8,7 +8,7 @@ import webview
 import tempfile
 import shutil
 
-APP_TITLE = "DigifantTool — Digifant 1 G60/G40 ECU Editor"
+APP_TITLE = "DigiTool — Digifant 1 G60/G40 ECU Editor"
 APP_VERSION = "0.1.0"
 
 def get_html_path():
@@ -19,14 +19,14 @@ def get_html_path():
     else:
         base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     
-    html = os.path.join(base, 'app', 'DigifantTool.html')
+    html = os.path.join(base, 'app', 'DigiTool.html')
     if os.path.exists(html):
         return html
     # Fallback: same dir as script
-    html2 = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'DigifantTool.html')
+    html2 = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'DigiTool.html')
     if os.path.exists(html2):
         return html2
-    raise FileNotFoundError(f"DigifantTool.html not found. Looked in:\n  {html}\n  {html2}")
+    raise FileNotFoundError(f"DigiTool.html not found. Looked in:\n  {html}\n  {html2}")
 
 
 class Api:
