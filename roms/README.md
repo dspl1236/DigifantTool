@@ -2,8 +2,23 @@
 
 Stock and known-tune EPROM dumps for use as baselines in DigiTool.
 
-These are 27C256 (32KB) dumps of Digifant 1 ECU EPROMs.
+These are 27C256/27C512 (32KB) dumps of Digifant 1 ECU EPROMs.
 Provided for reference, comparison, and tuning education purposes only.
+
+---
+
+## Archival Notice
+
+Several tune files in this repo originate from commercial tuners — specifically **SNS Tuning** (active ~2000–2005, website defunct) and **Eubel Tuning Gifhorn** (1995). These files are preserved here for the following reasons:
+
+- The original sources no longer exist and the files are otherwise lost to time
+- They are the primary test cases for DigiTool's patch detection system — without them, the tool's variant-aware flag detection cannot be verified
+- They represent unique calibration strategies (injected gate routines, 27C512 format, boost cut removal) that don't appear in any stock ROM
+- No commercial interest is being harmed — both tuning operations are defunct and these calibrations have not been sold or distributed commercially for 20+ years
+
+These files are shared in the spirit of technical preservation and education, not redistribution of commercial work. The tuner names and any embedded copyright strings are documented transparently in the analysis sections below. If you are a rights holder and object to inclusion, please open an issue.
+
+VW/Bosch factory firmware is copyright Bosch GmbH / Volkswagen AG.
 
 ---
 
