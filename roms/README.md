@@ -12,12 +12,13 @@ Provided for reference, comparison, and tuning education purposes only.
 | File | Application | Rev Limit | MAP Sensor | CRC32 |
 |------|-------------|-----------|------------|-------|
 | `G60_PG_StockEprom_022B93EE.BIN` | Corrado G60 / Golf G60 / Jetta G60 (PG engine) | 6201 RPM | 200 kPa | `0x8c6fec45` |
+| `PASSG60.BIN` | Passat G60 Syncro | 6250 RPM | 200 kPa | `0xb6367c2f` |
 | `limited_16v_G60.BIN` | G60 16v Limited (1.8 16v supercharged) | 7000 RPM | 200 kPa | `0x65550fd6` |
 | `G40_StockEprom.BIN` | VW Polo G40 Mk3 | 6601 RPM | 200 kPa | `0xb2bec49d` |
 | `G40_Mk2_StockEprom.BIN` | VW Polo G40 Mk2 | — | unknown | `0xbf9d8fef` |
 
 > **Missing stock ROMs** — PRs welcome for verified dumps of:
-> Passat G60 Syncro (`0xb6367c2f`), G60 Triple-Map stock (`0x1b198171`), Corrado SLS (`0x2cbd1e7a`)
+> G60 Triple-Map stock (`0x1b198171`), Corrado SLS (`0x2cbd1e7a`)
 
 ---
 
@@ -30,6 +31,31 @@ Reference tunes from YOU54F's PoloG40Digifant repo — useful for patch detectio
 | `G40_StockEprom_with7kRevLimit.BIN` | G40 Mk3 stock | Rev limit only | 6995 RPM | `0xc662e1e9` |
 | `G40_StockEprom_withWOTidleLambdaMods.BIN` | G40 Mk3 stock | SNS lambda patches + rev limit | 7812 RPM | `0xe653d271` |
 | `G40_EubelTuningInGifhorn1995_MinorFuelTimingChanges_BoostCutRemoval_IdleIgnition.BIN` | G40 Mk3 stock | Ignition advance, boost cut removal, rev limit | 6848 RPM | `0xad0c5304` |
+
+
+---
+
+## Passat G60 Syncro Analysis (vs Golf/Corrado G60 PG)
+
+The Passat G60 Syncro ROM (`0xb6367c2f`) shares the same G60 single-map firmware base as the
+Golf/Corrado ROM (`0x8c6fec45`) but has 181 bytes of differences — all of them meaningful factory
+calibration changes for the Syncro application. Same code, different tune. Everything is stock Bosch.
+
+**181 bytes changed — key differences:**
+
+| Region | Changes | Detail |
+|--------|---------|--------|
+| Ignition Map | 58 cells | Substantial advance across rows 7–13, mid-load cols 0–9. Up to **+12.9°** at row 13 col 1. Some retard at cols 13–14 (high-load knock margin) |
+| Fuel Map | 46 cells | Scattered ±1–11 raw adjustments, generally leaner mid-load, richer at some high-load cells |
+| Hot Start Enrichment | 13 entries | Reduced at low ECT end, increased mid-range — different warm-up profile |
+| OXS / Lambda tables | 13 bytes `0x4417–0x4423` | OXS upswing/downswing curve reshaped (pre-cat lambda tuning) |
+| WOT Initial Enrichment | Full reshape | `0x4542–0x454C` significantly richer — Syncro under load needs more fuel |
+| Boost cut calibration | 3 entries | Minor threshold adjustments |
+| ISV constants `0x6685` | 4 bytes | `0x06` → `0x0C` (doubled) — ISV duty cycle or frequency constants |
+| Idle/ISV firmware consts `0x6001` | 3 bytes | Idle target and response constants adjusted for Syncro drivetrain load |
+| Rev limit | 1 byte | 6201 → **6250 RPM** (49 RPM higher) |
+
+**Interpretation:** The Syncro carried ~20 kg more weight than the Golf/Corrado plus permanent AWD drivetrain losses. The ignition map is notably more aggressive in the mid-load region, suggesting the Bosch engineers trusted the Syncro's extra mass to act as knock damping under normal driving while needing more advance to recover lost efficiency through the drivetrain. The WOT enrichment is richer to protect the engine at sustained high load (towing, off-camber, full AWD engagement). ISV constants doubled — the Syncro's longer drivetrain creates more mechanical drag at idle that needed more ISV authority to compensate.
 
 ---
 
