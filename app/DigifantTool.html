@@ -967,24 +967,7 @@ select.editor-input option { background: var(--surface2); }
           <button class="btn btn-ghost" onclick="exportROM('ref', true)">⬇ Save Reference ROM</button>
         </div>
 
-        <!-- Rev limit (apply only, no export button — export is above) -->
-        <div style="margin-top:28px;border-top:1px solid var(--border);padding-top:20px">
-          <div class="section-title" style="font-size:16px;margin-bottom:6px">⏱ Rev Limit — Apply to Active ROM</div>
-          <div style="font-size:12px;color:var(--text-dim);font-family:var(--mono);margin-bottom:12px">
-            Set value on the <span style="color:var(--accent);cursor:pointer" onclick="showPanel('ignition')">Ignition Map page</span>, then save above.
-          </div>
-          <div class="alert alert-info" id="revLimitInfo" style="margin-bottom:12px"></div>
-          <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-            <div>
-              <div style="font-family:var(--sans);font-size:12px;font-weight:700;color:var(--text-dim);letter-spacing:1px;margin-bottom:4px">TARGET RPM</div>
-              <input class="editor-input" id="revLimitInput" type="number" min="3000" max="9500" step="100" value="7200" oninput="updateRevPreview()">
-            </div>
-            <div style="padding-top:18px;font-family:var(--mono);font-size:12px;color:var(--text-dim)" id="revLimitPreview"></div>
-            <div style="padding-top:18px">
-              <button class="btn btn-primary" onclick="stageRevLimit()">Stage Rev Limit Change</button>
-            </div>
-          </div>
-        </div>
+
       </div>
 
     </div><!-- /content -->
@@ -1630,24 +1613,6 @@ function updateIgnRevPreview() {
 // Staged changes — applied at export time
 let stagedChanges = {};
 
-function stageRevLimit() {
-  if (activeFileIdx < 0) return;
-  const target = parseInt(document.getElementById('revLimitInput').value);
-  if (isNaN(target) || target < 3000 || target > 9500) { alert('Enter RPM between 3000–9500'); return; }
-  stagedChanges.revLimit = target;
-  renderExportPanel();
-  alert(`Rev limit ${target} RPM staged — click "Save Active ROM" to export.`);
-}
-
-function updateRevPreview() {
-  const target = parseInt(document.getElementById('revLimitInput').value);
-  if (isNaN(target)) return;
-  const raw = Math.round(30000000 / target);
-  const hi = (raw >> 8) & 0xFF, lo = raw & 0xFF;
-  const actual = Math.round(30000000 / raw);
-  document.getElementById('revLimitPreview').textContent = `→ ${hi.toString(16).toUpperCase().padStart(2,'0')} ${lo.toString(16).toUpperCase().padStart(2,'0')}  (~${actual} RPM)`;
-}
-
 function exportROM(which, withChecksum) {
   const idx = (which === 'ref') ? refFileIdx : activeFileIdx;
   if (idx < 0 || !roms[idx]) { alert('No ROM loaded'); return; }
@@ -1703,9 +1668,6 @@ function renderExportPanel() {
     `;
   }
 
-  // Sync revLimitInfo
-  const rli = document.getElementById('revLimitInfo');
-  if (rli) rli.textContent = `Current: ${fp.revRPM ? fp.revRPM+' RPM @ 0x'+fp.revAddr.toString(16).toUpperCase() : 'unknown'}${stagedChanges.revLimit ? ' → Staged: '+stagedChanges.revLimit+' RPM' : ''}`;
 }
 
 function downloadBin(data, filename) {
