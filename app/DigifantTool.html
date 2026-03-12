@@ -745,6 +745,27 @@ select.editor-input option { background: var(--surface2); }
         </div>
         <div id="ignMap" class="heat-grid" style="grid-template-columns:repeat(16,1fr);max-width:800px"></div>
         <div class="cell-info" id="ignCellInfo" style="display:none"></div>
+
+        <div style="margin-top:24px;border-top:1px solid var(--border);padding-top:18px">
+          <div class="section-title" style="font-size:16px;margin-bottom:6px">⏱ Rev Limit</div>
+          <div class="alert alert-info" id="ignRevLimitInfo" style="margin-bottom:12px"></div>
+          <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+            <div>
+              <div style="font-family:var(--sans);font-size:12px;font-weight:700;color:var(--text-dim);letter-spacing:1px;margin-bottom:4px">TARGET RPM</div>
+              <input class="editor-input" id="ignRevLimitInput" type="number" min="3000" max="9500" step="100" value="7200" oninput="updateIgnRevPreview()" style="width:130px">
+            </div>
+            <div style="padding-top:18px;font-family:var(--mono);font-size:12px;color:var(--text-dim)" id="ignRevPreview"></div>
+            <div style="padding-top:18px">
+              <button class="btn btn-primary" onclick="applyRevLimitAndExport()">Apply &amp; Export BIN</button>
+            </div>
+            <div style="padding-top:18px">
+              <button class="btn btn-ghost" onclick="applyRevLimitAndExport(true)">Apply &amp; Export (skip checksum)</button>
+            </div>
+          </div>
+          <div class="alert alert-warn" style="margin-top:10px;font-size:11px">
+            ⚠ Checksum will be automatically recalculated before export. Always verify on a bench before road use.
+          </div>
+        </div>
       </div>
 
       <!-- FUEL MAP -->
@@ -907,7 +928,7 @@ select.editor-input option { background: var(--surface2); }
       <div class="panel" id="panel-export">
         <div class="section-title">Export ROM</div>
         <div class="section-sub">Download modified BIN for programming</div>
-        <div class="alert alert-warn">⚠ Editing is currently read-only in v0.1. Cell edit support coming in next build. Export your loaded ROM as-is for reference.</div>
+        <div class="alert alert-warn">⚠ Cell editing coming in v0.2. Rev limit editor is on the <strong>Ignition Map</strong> page. Checksum is automatically recalculated on export.</div>
         <div style="display:flex;gap:12px;margin-top:20px">
           <button class="btn btn-primary" onclick="exportROM()">⬇ Download Active ROM</button>
           <button class="btn btn-ghost" onclick="exportROM('ref')">⬇ Download Reference ROM</button>
@@ -929,6 +950,133 @@ select.editor-input option { background: var(--surface2); }
 </div>
 
 <script>
+
+// ========== ROM FINGERPRINT DATABASE ==========
+const ROM_DB = [
+  {
+    id: 'G60_PG_STOCK_022B93EE',
+    name: 'Corrado G60 — Stock PG (022B_93EE)',
+    type: 'STOCK',
+    ignAvgMin: 15, ignAvgMax: 22,
+    fuelAvgMin: 145, fuelAvgMax: 165,
+    lambdaBytes: [0xBD, 0x62, 0xA7],  // closed loop ORI variant
+    digilag4433: [0x09, 0x55],         // ORI digilag
+  },
+  {
+    id: 'G60_PG_STOCK_GENERIC',
+    name: 'G60 PG — Stock (unmodified)',
+    type: 'STOCK',
+    ignAvgMin: 14, ignAvgMax: 23,
+    fuelAvgMin: 140, fuelAvgMax: 170,
+    lambdaBytes: null,  // any closed-loop
+    digilag4433: null,
+  },
+  {
+    id: 'G60_TRIPLE_OPENLOOP',
+    name: 'G60 Triple Map — Open Loop Tune',
+    type: 'TUNE',
+    lambdaBytes: [0x01, 0x01, 0x01],
+  },
+  {
+    id: 'G60_DIGILAG_REMOVED',
+    name: 'G60 — Digilag Removed',
+    type: 'TUNE',
+    digilag4433: [0x00, 0x00],
+  },
+];
+
+function fingerprintROM(data) {
+  const ignAvg = Array.from({length:256},(_,i)=>(210-data[0x4004+i])/2.86).reduce((a,b)=>a+b,0)/256;
+  const fuelAvg = Array.from({length:256},(_,i)=>data[0x4104+i]).reduce((a,b)=>a+b,0)/256;
+  const lambdaBytes = [data[0x6269], data[0x626A], data[0x626B]];
+  const digilag = [data[0x4433], data[0x4434]];
+  const isvDisable = data[0x6287] === 0x01;
+  const isOpenLoop = lambdaBytes[0]===0x01 && lambdaBytes[1]===0x01 && lambdaBytes[2]===0x01;
+  const isDigilagOff = digilag[0]===0x00 && digilag[1]===0x00;
+
+  // Check if lower 16KB is all fill bytes (0x41 = 'A' or 0xFF)
+  const lowerFill = data[0] === 0x41 || data[0] === 0xFF;
+  const fillByte = data[0];
+  const lowerIsFill = lowerFill && Array.from(data.slice(0,0x4000)).every(b=>b===fillByte);
+
+  // Rev limit: search 0x4BF0-0x4BF4 and 0x5BC2 
+  const rl1Raw = (data[0x4BF2]<<8)|data[0x4BF3];
+  const rl2Raw = (data[0x5BC2]<<8)|data[0x5BC3];
+  // Use whichever gives a sane RPM (3000-10000)
+  const rl1RPM = rl1Raw > 0 ? Math.round(30000000/rl1Raw) : 0;
+  const rl2RPM = rl2Raw > 0 ? Math.round(30000000/rl2Raw) : 0;
+  const revRPM = (rl1RPM > 3000 && rl1RPM < 10000) ? rl1RPM : 
+                 (rl2RPM > 3000 && rl2RPM < 10000) ? rl2RPM : null;
+  const revAddr = (rl1RPM > 3000 && rl1RPM < 10000) ? 0x4BF2 : 0x5BC2;
+
+  const flags = [];
+  if (isOpenLoop)   flags.push({label:'OPEN LOOP LAMBDA', color:'var(--accent2)'});
+  if (isDigilagOff) flags.push({label:'DIGILAG REMOVED',  color:'var(--accent3)'});
+  if (isvDisable)   flags.push({label:'ISV DISABLED',      color:'var(--accent)'});
+
+  // Stock vs tune classification
+  let classification = 'UNKNOWN';
+  let classColor = 'var(--text-dim)';
+  let matchName = '';
+
+  if (!isOpenLoop && !isDigilagOff && ignAvg < 23 && ignAvg > 14 && fuelAvg > 140) {
+    classification = 'STOCK';
+    classColor = 'var(--accent3)';
+    matchName = 'G60 PG — Appears unmodified';
+  } else if (isOpenLoop || isDigilagOff || ignAvg > 23) {
+    classification = 'TUNED';
+    classColor = 'var(--accent)';
+    matchName = 'G60 PG — Performance tune detected';
+  }
+
+  return {
+    ignAvg, fuelAvg, lambdaBytes, digilag,
+    isOpenLoop, isDigilagOff, isvDisable,
+    lowerIsFill, fillByte, flags,
+    classification, classColor, matchName,
+    revRPM, revAddr,
+  };
+}
+
+// ========== CHECKSUM ==========
+// Digifant 1: 16-bit checksum stored at 0x7FFE-0x7FFF
+// = sum of all bytes 0x4000-0x7FFD as 16-bit
+// The stored value is: (0x10000 - (sum & 0xFFFF)) & 0xFFFF  [two's complement]
+// NOTE: This is our best current model pending more ROM samples - may need adjustment
+
+function computeChecksum(data) {
+  // Sum bytes from 0x4000 to 0x7FFD (exclude last 2 checksum bytes)
+  let sum = 0;
+  for (let i = 0x4000; i < 0x7FFE; i++) sum += data[i];
+  sum = sum & 0xFFFF;
+  return sum;
+}
+
+function getStoredChecksum(data) {
+  return (data[0x7FFE] << 8) | data[0x7FFF];
+}
+
+function checksumValid(data) {
+  const computed = computeChecksum(data);
+  const stored = getStoredChecksum(data);
+  // Try both: stored = sum itself, or stored = complement
+  const complement = (0x10000 - computed) & 0xFFFF;
+  return stored === computed || stored === complement || (computed + stored) === 0x10000;
+}
+
+function recalcChecksum(dataArr) {
+  // Returns new Uint8Array with corrected checksum at 0x7FFE-0x7FFF
+  const modified = new Uint8Array(dataArr);
+  let sum = 0;
+  for (let i = 0x4000; i < 0x7FFE; i++) sum += modified[i];
+  sum = sum & 0xFFFF;
+  // Store complement (two's complement of sum) - most common Motorola approach
+  const cs = (0x10000 - sum) & 0xFFFF;
+  modified[0x7FFE] = (cs >> 8) & 0xFF;
+  modified[0x7FFF] = cs & 0xFF;
+  return modified;
+}
+
 // ========== STATE ==========
 let roms = [];           // array of { name, data: Uint8Array }
 let activeFileIdx = -1;
@@ -1093,10 +1241,13 @@ function renderAll() {
   renderHex(rom);
   updateDiff();
   updateRevPreview();
+  updateIgnRevPreview();
 }
 
 // ---- OVERVIEW ----
 function renderOverview(rom) {
+  const fp = fingerprintROM(rom);
+
   const name = roms[activeFileIdx].name;
   document.getElementById('overviewSub').textContent = name + ' — Digifant 1 / 27C256 / 32KB';
 
@@ -1135,7 +1286,15 @@ function renderOverview(rom) {
   document.getElementById('statsGrid').innerHTML = `
     <div class="stat-card">
       <div class="stat-label">Rev Limit</div>
-      <div class="stat-value">${rlRPM > 1000 && rlRPM < 12000 ? rlRPM.toLocaleString() : '??'}<span class="stat-unit">RPM</span></div>
+      <div class="stat-value">${fp.revRPM ? fp.revRPM.toLocaleString() : '??'}<span class="stat-unit">RPM</span></div>
+    </div>
+    <div class="stat-card" style="grid-column:span 4">
+      <div class="stat-label">ROM Classification</div>
+      <div style="font-family:var(--mono);font-size:13px;margin-top:4px">
+        <span style="color:${fp.classColor};font-size:18px;font-weight:bold">${fp.classification}</span>
+        <span style="color:var(--text-dim);margin-left:12px">${fp.matchName}</span>
+        <span style="margin-left:16px">${fp.flags.map(f=>'<span style="background:rgba(232,184,75,0.1);color:'+f.color+';padding:1px 8px;border-radius:2px;font-size:11px;margin-right:4px">'+f.label+'</span>').join('')||''}</span>
+      </div>
     </div>
     <div class="stat-card">
       <div class="stat-label">Ign Advance Avg</div>
@@ -1151,22 +1310,40 @@ function renderOverview(rom) {
     </div>
   `;
 
-  // Checksum
+  // Fingerprint + checksum
+  const storedCS = getStoredChecksum(rom);
+  const computedCS = computeChecksum(rom);
+  const csOK = checksumValid(rom);
+  const flagsHtml = fp.flags.map(f=>`<span style="background:rgba(232,184,75,0.1);color:${f.color};padding:1px 6px;border-radius:2px;font-size:10px;margin-right:4px">${f.label}</span>`).join('');
+
   document.getElementById('checksumPanel').innerHTML = `
-    <span style="color:var(--text-dim)">Ignition map sum: </span><span style="color:var(--accent)">${Array.from(rom.slice(0x4004,0x4104)).reduce((a,b)=>a+b,0)}</span><br>
-    <span style="color:var(--text-dim)">Fuel map sum:     </span><span style="color:var(--accent)">${Array.from(rom.slice(0x4104,0x4204)).reduce((a,b)=>a+b,0)}</span><br>
-    <span style="color:var(--text-dim)">ROM checksum:     </span><span style="color:var(--accent)">${Array.from(rom).reduce((a,b)=>a+b,0) & 0xFFFF}</span><br>
-    <span style="color:var(--text-dim)">Rev raw:          </span><span style="color:var(--accent)">${rlHi.toString(16).toUpperCase().padStart(2,'0')} ${rlLo.toString(16).toUpperCase().padStart(2,'0')} → 0x${rlRaw.toString(16).toUpperCase()}</span>
+    <div style="margin-bottom:8px">
+      <span style="color:var(--text-dim)">Classification: </span>
+      <span style="color:${fp.classColor};font-weight:bold">${fp.classification}</span>
+      <span style="color:var(--text-dim);font-size:11px;margin-left:8px">${fp.matchName}</span>
+    </div>
+    <div style="margin-bottom:6px">${flagsHtml || '<span style="color:var(--text-dim);font-size:11px">No code patches detected</span>'}</div>
+    <div style="margin-top:8px;color:var(--text-dim)">
+      Ign avg: <span style="color:var(--accent)">${fp.ignAvg.toFixed(1)}° BTDC</span> &nbsp;
+      Fuel avg: <span style="color:var(--accent)">${fp.fuelAvg.toFixed(1)}</span> &nbsp;
+      Lambda: <span style="color:${fp.isOpenLoop?'var(--accent2)':'var(--accent3)'}">${fp.isOpenLoop?'OPEN LOOP':'CLOSED LOOP'}</span>
+    </div>
+    <div style="margin-top:6px;color:var(--text-dim)">
+      Stored CS: <span style="color:var(--accent)">0x${storedCS.toString(16).toUpperCase().padStart(4,'0')}</span> &nbsp;
+      Computed: <span style="color:var(--accent)">0x${computedCS.toString(16).toUpperCase().padStart(4,'0')}</span> &nbsp;
+      <span style="color:${csOK?'var(--accent3)':'var(--accent2)'}">${csOK?'✓ VALID':'⚠ MISMATCH'}</span>
+    </div>
   `;
-  document.getElementById('revLimitInfo').textContent = `Current rev limit: ${rlRPM > 1000 && rlRPM < 12000 ? rlRPM + ' RPM' : 'Unknown (raw: 0x'+rlRaw.toString(16).toUpperCase()+')'} — raw bytes: ${rlHi.toString(16).toUpperCase()} ${rlLo.toString(16).toUpperCase()}`;
+  document.getElementById('revLimitInfo').textContent = `Detected rev limit: ${fp.revRPM ? fp.revRPM + ' RPM @ 0x'+fp.revAddr.toString(16).toUpperCase() : 'Unknown'} — checksum ${csOK ? 'valid' : 'needs recalc before flashing'}`;
 
   // ECU info panel
   document.getElementById('ecuInfo').innerHTML = `
     <div class="row"><span class="label">File</span><span class="val">${roms[activeFileIdx].name.substring(0,18)}</span></div>
     <div class="row"><span class="label">Size</span><span class="val green">32768 B ✓</span></div>
-    <div class="row"><span class="label">Rev Limit</span><span class="val">${rlRPM > 1000 && rlRPM < 12000 ? rlRPM+' RPM' : '??'}</span></div>
-    <div class="row"><span class="label">Ign Avg</span><span class="val">${(ignSum/256).toFixed(1)}° BTDC</span></div>
-    <div class="row"><span class="label">Fuel Avg</span><span class="val">${Math.round(fSum/256)} raw</span></div>
+    <div class="row"><span class="label">Type</span><span class="val" style="color:${fp.classColor}">${fp.classification}</span></div>
+    <div class="row"><span class="label">Rev Limit</span><span class="val">${fp.revRPM ? fp.revRPM+' RPM' : '??'}</span></div>
+    <div class="row"><span class="label">Lambda</span><span class="val" style="color:${fp.isOpenLoop?'var(--accent2)':'var(--accent3)'}">${fp.isOpenLoop?'OPEN':'CLOSED'}</span></div>
+    <div class="row"><span class="label">Checksum</span><span class="val" style="color:${csOK?'var(--accent3)':'var(--accent2)'}">${csOK?'VALID':'MISMATCH'}</span></div>
   `;
 }
 
@@ -1393,6 +1570,40 @@ function updateDiff() {
 }
 
 // ---- REV LIMIT ----
+function updateIgnRevPreview() {
+  if (activeFileIdx < 0) return;
+  const rom = roms[activeFileIdx].data;
+  const fp = fingerprintROM(rom);
+  const target = parseInt(document.getElementById('ignRevLimitInput').value);
+  if (isNaN(target)) return;
+  const raw = Math.round(30000000 / target);
+  const hi = (raw >> 8) & 0xFF, lo = raw & 0xFF;
+  const actual = Math.round(30000000 / raw);
+  const info = document.getElementById('ignRevLimitInfo');
+  if (info) info.textContent = `Current: ${fp.revRPM ? fp.revRPM+' RPM' : 'unknown'} @ 0x${fp.revAddr ? fp.revAddr.toString(16).toUpperCase() : '?'}`;
+  const prev = document.getElementById('ignRevPreview');
+  if (prev) prev.textContent = `→ ${hi.toString(16).toUpperCase().padStart(2,'0')} ${lo.toString(16).toUpperCase().padStart(2,'0')}  (actual ~${actual} RPM)`;
+}
+
+function applyRevLimitAndExport(skipChecksum) {
+  if (activeFileIdx < 0) return;
+  const target = parseInt(document.getElementById('ignRevLimitInput').value);
+  if (isNaN(target) || target < 3000 || target > 9500) { alert('Enter RPM between 3000-9500'); return; }
+  const rom = roms[activeFileIdx].data;
+  const fp = fingerprintROM(rom);
+  const raw = Math.round(30000000 / target);
+  const hi = (raw >> 8) & 0xFF, lo = raw & 0xFF;
+  let modified = new Uint8Array(rom);
+  const addr = fp.revAddr || 0x5BC2;
+  modified[addr] = hi;
+  modified[addr + 1] = lo;
+  if (!skipChecksum) {
+    modified = recalcChecksum(modified);
+  }
+  const suffix = skipChecksum ? '_rev'+target+'_nocs' : '_rev'+target;
+  downloadBin(modified, roms[activeFileIdx].name.replace(/\.BIN$/i,'') + suffix + '.BIN');
+}
+
 function updateRevPreview() {
   const target = parseInt(document.getElementById('revLimitInput').value);
   if (isNaN(target)) return;
@@ -1405,14 +1616,17 @@ function updateRevPreview() {
 function applyRevLimit() {
   if (activeFileIdx < 0) return;
   const target = parseInt(document.getElementById('revLimitInput').value);
-  if (isNaN(target) || target < 3000 || target > 9000) { alert('Enter RPM between 3000-9000'); return; }
+  if (isNaN(target) || target < 3000 || target > 9500) { alert('Enter RPM between 3000-9500'); return; }
+  const rom = roms[activeFileIdx].data;
+  const fp = fingerprintROM(rom);
   const raw = Math.round(30000000 / target);
   const hi = (raw >> 8) & 0xFF, lo = raw & 0xFF;
-  // Make a copy
-  const modified = new Uint8Array(roms[activeFileIdx].data);
-  modified[0x5BC2] = hi;
-  modified[0x5BC3] = lo;
-  downloadBin(modified, roms[activeFileIdx].name.replace('.BIN','').replace('.bin','') + `_rev${target}.BIN`);
+  let modified = new Uint8Array(rom);
+  const addr = fp.revAddr || 0x5BC2;
+  modified[addr] = hi;
+  modified[addr + 1] = lo;
+  modified = recalcChecksum(modified);
+  downloadBin(modified, roms[activeFileIdx].name.replace(/\.BIN$/i,'') + `_rev${target}.BIN`);
 }
 
 function exportROM(which) {
