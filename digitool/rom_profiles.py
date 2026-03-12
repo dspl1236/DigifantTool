@@ -258,16 +258,17 @@ def compute_checksum(rom: bytes) -> int:
 
 @dataclass
 class DetectionResult:
-    variant:    str
-    family:     str
-    label:      str
-    confidence: str          # "HIGH" | "MEDIUM" | "LOW"
-    method:     str
-    cal:        str = ""
-    rev_addr:   Optional[int] = None
-    rpm_limit:  Optional[int] = None
-    crc32:      int = 0
-    warnings:   list = field(default_factory=list)
+    variant:        str
+    family:         str
+    label:          str
+    confidence:     str          # "HIGH" | "MEDIUM" | "LOW"
+    method:         str
+    cal:            str = ""
+    rev_addr:       Optional[int] = None
+    rpm_limit:      Optional[int] = None
+    crc32:          int = 0
+    warnings:       list = field(default_factory=list)
+    map_sensor_kpa: int = 200    # 200 or 250 — detected from firmware constant
 
     @property
     def is_known_stock(self) -> bool:
@@ -312,6 +313,47 @@ class DetectionResult:
 
 
 # ---------------------------------------------------------------------------
+# MAP sensor range detection
+# ---------------------------------------------------------------------------
+
+# The HD6303 firmware contains a 16-bit immediate load of the sensor's full-scale
+# ADC value:
+#   CE 00 C8  →  LDX #200  →  200 kPa sensor (stock Bosch 0-200 kPa)
+#   CE 00 FA  →  LDX #250  →  250 kPa sensor (high-boost upgrade sensor)
+#
+# This constant appears twice in the firmware (two MAP routines that use it).
+# G40 Mk3 stock confirmed 200 kPa at 0x7220/0x722A.
+# G60 triple-map tune (read.BIN) confirmed 200 kPa at 0x710B/0x7115.
+# A 250 kPa-calibrated ROM will have CE 00 FA at the same relative locations.
+
+_CE00C8 = bytes([0xCE, 0x00, 0xC8])   # LDX #200
+_CE00FA = bytes([0xCE, 0x00, 0xFA])   # LDX #250
+
+def detect_map_sensor(rom: bytes) -> tuple[int, str]:
+    """
+    Return (kpa: int, method: str) — 200 or 250 kPa.
+
+    Searches the ROM for the firmware constant that encodes the MAP sensor's
+    full-scale range.  Returns 200 if ambiguous / not found (safe default).
+    """
+    n200 = sum(1 for i in range(len(rom) - 2)
+               if rom[i:i+3] == _CE00C8)
+    n250 = sum(1 for i in range(len(rom) - 2)
+               if rom[i:i+3] == _CE00FA)
+
+    if n200 > 0 and n250 == 0:
+        return 200, f"CE 00 C8 (LDX #200) found ×{n200} — 200 kPa sensor"
+    if n250 > 0 and n200 == 0:
+        return 250, f"CE 00 FA (LDX #250) found ×{n250} — 250 kPa sensor"
+    if n250 > 0 and n200 > 0:
+        # Both present — unusual; go with whichever appears more often
+        kpa = 250 if n250 >= n200 else 200
+        return kpa, f"Ambiguous: CE 00 C8 ×{n200}, CE 00 FA ×{n250} — defaulting to {kpa} kPa"
+    # Neither found (e.g. Mk2 or very different firmware)
+    return 200, "MAP sensor constant not found — assuming 200 kPa (default)"
+
+
+# ---------------------------------------------------------------------------
 # Main detection function
 # ---------------------------------------------------------------------------
 
@@ -329,6 +371,7 @@ def detect_rom(rom_data: bytes) -> DetectionResult:
 
     data = rom_data[:0x8000]
     crc  = zlib.crc32(data) & 0xFFFFFFFF
+    sensor_kpa, sensor_method = detect_map_sensor(data)
 
     # 1. Known CRC
     if crc in KNOWN_CRCS:
@@ -343,6 +386,7 @@ def detect_rom(rom_data: bytes) -> DetectionResult:
             rev_addr=k["rev_addr"],
             rpm_limit=k.get("rpm_limit"),
             crc32=crc,
+            map_sensor_kpa=sensor_kpa,
         )
 
     # 2. Reset vector
@@ -360,6 +404,7 @@ def detect_rom(rom_data: bytes) -> DetectionResult:
             rev_addr=rv["rev_addr"],
             crc32=crc,
             warnings=["ROM not in known-stock library — likely a tune"],
+            map_sensor_kpa=sensor_kpa,
         )
 
     # 3. Unknown
@@ -376,4 +421,5 @@ def detect_rom(rom_data: bytes) -> DetectionResult:
             f"CRC32: {crc:#010x}",
             "Supported ROMs: G60 Corrado/Golf/Jetta/Passat, G60 16v, G60 Triple-Map, G40 Mk3, G40 Mk2",
         ],
+        map_sensor_kpa=sensor_kpa,
     )

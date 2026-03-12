@@ -13,7 +13,7 @@ from PyQt5.QtGui import QFont
 
 from digitool.rom_profiles import (
     DetectionResult, VARIANT_LABELS, CODE_PATCHES,
-    compute_checksum, KNOWN_CRCS, rpm_to_rev_limit
+    compute_checksum, KNOWN_CRCS, rpm_to_rev_limit, detect_map_sensor
 )
 
 
@@ -167,6 +167,17 @@ class OverviewTab(QWidget):
         cl.addStretch()
         root.addWidget(grp_cs)
 
+        # ── MAP Sensor ───────────────────────────────────────────────────────
+        grp_sensor = QGroupBox("MAP Sensor")
+        sl = QHBoxLayout(grp_sensor)
+        self.badge_sensor = _badge("NO ROM", "#3d5068")
+        sl.addWidget(self.badge_sensor)
+        self.lbl_sensor_method = QLabel("")
+        self.lbl_sensor_method.setStyleSheet("color: #3d5068; font-size: 11px;")
+        sl.addWidget(self.lbl_sensor_method)
+        sl.addStretch()
+        root.addWidget(grp_sensor)
+
         # ── Code flags ───────────────────────────────────────────────────────
         grp_flags = QGroupBox("Code Patches")
         self.flags_layout = QVBoxLayout(grp_flags)
@@ -261,6 +272,17 @@ class OverviewTab(QWidget):
         else:
             self._set_badge(self.badge_cs, "MODIFIED", "#e8b84b")
 
+        # MAP sensor range
+        kpa = result.map_sensor_kpa
+        _, sensor_method = detect_map_sensor(rom)
+        if kpa == 250:
+            self._set_badge(self.badge_sensor, "250 kPa", "#00d4ff")
+        elif kpa == 200:
+            self._set_badge(self.badge_sensor, "200 kPa", "#2dff6e")
+        else:
+            self._set_badge(self.badge_sensor, f"{kpa} kPa", "#e8b84b")
+        self.lbl_sensor_method.setText(sensor_method)
+
         # Code flags
         flags = result.code_flags(rom)
         for key, badge in self._flag_badges.items():
@@ -290,6 +312,8 @@ class OverviewTab(QWidget):
         self.spin_rev.setEnabled(False)
         self.btn_apply_rev.setEnabled(False)
         self._set_badge(self.badge_cs, "NO ROM", "#3d5068")
+        self._set_badge(self.badge_sensor, "NO ROM", "#3d5068")
+        self.lbl_sensor_method.setText("")
         for badge in self._flag_badges.values():
             self._set_badge(badge, "—", "#3d5068")
         self.btn_save.setEnabled(False)
