@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DigiTool v0.3.4 — G60 / G40 ECU Editor</title>
+<title>DigiTool v0.4.12 — G60 / G40 ECU Editor</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@400;600;700;900&family=Barlow:wght@400;500&display=swap');
 
@@ -630,7 +630,7 @@ select.editor-input option { background: var(--surface2); }
 <body>
 
 <header>
-  <div class="logo">DigiTool <span style="font-size:10px;opacity:0.5;vertical-align:middle">v0.3.4</span> <span>G60 / G40 ECU EDITOR</span></div>
+  <div class="logo">DigiTool <span style="font-size:10px;opacity:0.5;vertical-align:middle">v0.4.12</span> <span>G60 / G40 ECU EDITOR</span></div>
   <div class="header-status">
     <span id="statusDot" class="status-dot"></span>
     <span id="statusText">NO ROM LOADED</span>
@@ -991,7 +991,7 @@ select.editor-input option { background: var(--surface2); }
 </div>
 
 <script>
-  const APP_VERSION = '0.3.4';
+  const APP_VERSION = '0.4.12';
   const APP_NAME = 'DigiTool';
 
 // ========== ROM FINGERPRINT DATABASE ==========
@@ -1000,18 +1000,27 @@ select.editor-input option { background: var(--surface2); }
 //   2. Reset vector @ 0x7FFE → HIGH confidence variant ID
 //   3. Heuristics (rev limit address, fuel avg, fill pattern) → MEDIUM confidence
 
-// CRC32 of known stock ROMs (full 32KB)
+// CRC32 of known ROMs (full 32KB) — synced with Python rom_profiles.py v0.4.12
 const KNOWN_CRCS = {
-  // G60 single-map family (reset 45FD, ign@0x4004, fuel@0x4104, rev@0x4BF2)
-  0x8c6fec45: { variant: 'G60',        car: 'Corrado/Golf/Jetta G60',      engine: 'PG',  cal: '022B_93EE',   type: 'STOCK', revAddr: 0x4BF2, layout: 'SINGLE' },
-  0xb6367c2f: { variant: 'G60_PASSAT', car: 'Passat G60 Syncro',           engine: 'PG',  cal: 'PASSG60',     type: 'STOCK', revAddr: 0x4BF2, layout: 'SINGLE' },
-  0x65550fd6: { variant: 'G60_16V',    car: 'G60 16v Limited',             engine: 'PG',  cal: 'limited_16v', type: 'STOCK', revAddr: 0x4BF2, layout: 'SINGLE', note: '7000 RPM rev limit, higher ignition advance — 1.8 16v G60 variant' },
-  // G60 triple-map family (reset 4C14, ign1@0x4000 ign2@0x4100 ign3@0x4200, fuel@0x4300, rev@0x4456)
-  0x1b198171: { variant: 'G60_TRIPLE', car: 'G60 Triple-Map',              engine: 'PG',  cal: 'stock_triple', type: 'STOCK', revAddr: 0x4456, layout: 'TRIPLE' },
-  0x2cbd1e7a: { variant: 'G60_TRIPLE', car: 'Corrado G60 SLS',             engine: 'PG',  cal: 'corradoSLS',   type: 'STOCK', revAddr: 0x4456, layout: 'TRIPLE', note: '7001 RPM rev limit' },
-  // G40
-  0xb2bec49d: { variant: 'G40',        car: 'Polo G40 Mk3',                engine: 'PY',  cal: 'G40_Mk3',     type: 'STOCK', revAddr: 0x5BC2, layout: 'SINGLE' },
-  0xbf9d8fef: { variant: 'G40_MK2',    car: 'Polo G40 Mk2',                engine: 'PY',  cal: 'G40_Mk2',     type: 'STOCK', revAddr: null,   layout: 'MK2',   note: 'Earlier ECU generation — 0xFF lower fill, code mirrored at 0x4000/0x6000, different map offsets' },
+  // ── G60 single-map stock (reset 45FD, ign@0x4004, fuel@0x4104, rev@0x4BF2) ──
+  0x8c6fec45: { variant: 'G60',        car: 'Corrado/Golf/Jetta G60',         engine: 'PG', cal: '022B_93EE',    type: 'STOCK', revAddr: 0x4BF2, layout: 'SINGLE' },
+  0xb6367c2f: { variant: 'G60_PASSAT', car: 'Passat G60 Syncro',              engine: 'PG', cal: 'PASSG60',      type: 'STOCK', revAddr: 0x4BF2, layout: 'SINGLE' },
+  0x65550fd6: { variant: 'G60_16V',    car: 'G60 16v Limited',                engine: 'PG', cal: 'limited_16v',  type: 'STOCK', revAddr: 0x4BF2, layout: 'SINGLE', note: '7000 RPM rev limit, higher ignition advance' },
+  // ── G60 single-map tunes ──
+  0x52f186c4: { variant: 'G60',        car: 'Theibach RS G60 (27C512 read)',   engine: 'PG', cal: 'TUNED',        type: 'TUNED', revAddr: 0x4BF2, layout: 'SINGLE', note: '7133 RPM, +5–12° ign advance, fuel/IAT trim, no injected code' },
+  0x735d3735: { variant: 'G60',        car: 'SNS Tuning Stage 5 G60 (2002)',   engine: 'PG', cal: 'TUNED',        type: 'TUNED', revAddr: 0x4BF2, layout: 'SINGLE', note: '7000 RPM, fuel rescale, boost raised, SNS code @ 0x56F0', tuner: 'SNS' },
+  // ── G60 triple-map (reset 4C14, ign1@0x4000/4100/4200, fuel@0x4300, rev@0x4456) ──
+  0x1b198171: { variant: 'G60_TRIPLE', car: 'G60 Triple-Map (stock)',          engine: 'PG', cal: 'stock_triple', type: 'STOCK', revAddr: 0x4456, layout: 'TRIPLE' },
+  0x2cbd1e7a: { variant: 'G60_TRIPLE', car: 'Corrado G60 SLS',                 engine: 'PG', cal: 'corradoSLS',   type: 'STOCK', revAddr: 0x4456, layout: 'TRIPLE', note: '7001 RPM rev limit' },
+  0xf009d613: { variant: 'G60_TRIPLE', car: 'G60 Triple-Map — SNS Stage 4',    engine: 'PG', cal: 'TUNED',        type: 'TUNED', revAddr: 0x4456, layout: 'TRIPLE', note: '7201 RPM', tuner: 'SNS' },
+  // ── G40 Mk3 stock (reset 54AA, rev@0x5BC2) ──
+  0xb2bec49d: { variant: 'G40',        car: 'Polo G40 Mk3 (stock)',            engine: 'PY', cal: 'G40_Mk3',      type: 'STOCK', revAddr: 0x5BC2, layout: 'SINGLE' },
+  // ── G40 Mk3 tunes ──
+  0xe653d271: { variant: 'G40',        car: 'Polo G40 Mk3 — SNS WOT/Idle Lambda', engine: 'PY', cal: 'TUNED',    type: 'TUNED', revAddr: 0x5BC2, layout: 'SINGLE', note: '7812 RPM, SNS lambda gate routines injected @ 0x771F', tuner: 'SNS' },
+  0xc662e1e9: { variant: 'G40',        car: 'Polo G40 Mk3 — 7k Rev Limit',    engine: 'PY', cal: 'TUNED',        type: 'TUNED', revAddr: 0x5BC2, layout: 'SINGLE', note: '6995 RPM, rev limit only' },
+  0xad0c5304: { variant: 'G40',        car: 'Polo G40 Mk3 — Eubel Tuning Gifhorn 1995', engine: 'PY', cal: 'TUNED', type: 'TUNED', revAddr: 0x5BC2, layout: 'SINGLE', note: '6848 RPM, ign advance, boost cut removed, 27C512 format', tuner: 'Eubel' },
+  // ── G40 Mk2 (reset E000) ──
+  0xbf9d8fef: { variant: 'G40_MK2',   car: 'Polo G40 Mk2',                    engine: 'PY', cal: 'G40_Mk2',      type: 'STOCK', revAddr: null,   layout: 'MK2',   note: 'Earlier ECU — 0xFF lower fill, different map offsets' },
 };
 
 // Reset vectors @ 0x7FFE-0x7FFF for each variant
@@ -1022,7 +1031,24 @@ const RESET_VECTORS = {
   'E000': { variant: 'G40_MK2',    confidence: 'HIGH', revAddr: null,   layout: 'MK2',   note: 'G40 Mk2 — different ROM structure' },
 };
 
-function crc32(data) {
+function detectMapSensor(data) {
+  // Primary: LDX #200 / LDX #250 (CE 00 C8 / CE 00 FA) — appears 2x in firmware
+  let count200 = 0, count250 = 0;
+  for (let i = 0x4000; i < 0x7FFD; i++) {
+    if (data[i]===0xCE && data[i+1]===0x00 && data[i+2]===0xC8) count200++;
+    if (data[i]===0xCE && data[i+1]===0x00 && data[i+2]===0xFA) count250++;
+  }
+  if (count200 >= 1) return { kpa: 200, method: `CE 00 C8 (LDX #200) ×${count200}` };
+  if (count250 >= 1) return { kpa: 250, method: `CE 00 FA (LDX #250) ×${count250}` };
+  // Fallback: CMPB #200 / CMPB #250 (C1 C8 / C1 FA)
+  for (let i = 0x4000; i < 0x7FFF; i++) {
+    if (data[i]===0xC1 && data[i+1]===0xC8) return { kpa: 200, method: 'C1 C8 (CMPB #200) — fallback' };
+    if (data[i]===0xC1 && data[i+1]===0xFA) return { kpa: 250, method: 'C1 FA (CMPB #250) — fallback' };
+  }
+  return { kpa: null, method: 'No sensor constant found' };
+}
+
+
   let crc = 0xFFFFFFFF;
   for (let i = 0; i < data.length; i++) {
     crc ^= data[i];
@@ -1086,23 +1112,36 @@ function fingerprintROM(data) {
   const ignAvg   = Array.from({length:256},(_,i)=>(210-data[ignAddr+i])/2.86).reduce((a,b)=>a+b,0)/256;
   const fuelAvg  = Array.from({length:256},(_,i)=>data[fuelAddr+i]).reduce((a,b)=>a+b,0)/256;
 
-  const lambdaBytes = [data[0x6269], data[0x626A], data[0x626B]];
-  const digilag = [data[0x4433], data[0x4434]];
-  const isvDisable   = data[0x6287] === 0x01;
-  const isOpenLoop   = lambdaBytes[0]===0x01 && lambdaBytes[1]===0x01 && lambdaBytes[2]===0x01;
-  const isDigilagOff = digilag[0]===0x00 && digilag[1]===0x00;
+  // MAP sensor detection
+  const sensor = detectMapSensor(data);
+
+  // Variant-aware patch detection
+  const patches = checkPatches(data, variantInfo.layout, variantInfo.variant);
+  const patchMap = Object.fromEntries(patches.map(p => [p.key, p.isPatched]));
+
+  // Convenience booleans for classification / flags
+  const isOpenLoop   = patchMap['open_loop']   ?? false;
+  const isDigilagOff = (patchMap['digilag_lo'] ?? false) && (patchMap['digilag_hi'] ?? false);
+  const isvDisable   = patchMap['isv_disable'] ?? false;
+  const isSNSG40     = patches.filter(p => p.key.startsWith('sns_')).some(p => p.isPatched);
 
   // Rev limit from detected address
   const revAddr = variantInfo.revAddr;
   const revRaw  = revAddr ? ((data[revAddr]<<8)|data[revAddr+1]) : null;
-  const revRPM  = (revRaw && revRaw > 0x0E00 && revRaw < 0x1600) ? Math.round(30000000/revRaw) : null;
+  const revRPM  = (revRaw && revRaw > 0x0E00 && revRaw < 0x1800) ? Math.round(30000000/revRaw) : null;
 
+  // Build badge flags
   const flags = [];
+  if (isTriple)     flags.push({label:'TRIPLE-MAP FIRMWARE', color:'var(--accent3)'});
+  if (isMk2)        flags.push({label:'G40 Mk2 ECU — EARLIER GENERATION', color:'var(--accent)'});
+  if (sensor.kpa === 250) flags.push({label:'250 kPa MAP SENSOR', color:'#4b9be8'});
   if (isOpenLoop)   flags.push({label:'OPEN LOOP LAMBDA', color:'var(--accent2)'});
   if (isDigilagOff) flags.push({label:'DIGILAG REMOVED',  color:'var(--accent3)'});
   if (isvDisable)   flags.push({label:'ISV DISABLED',      color:'var(--accent)'});
-  if (isMk2)        flags.push({label:'G40 Mk2 ECU — EARLIER GENERATION', color:'var(--accent)'});
-  if (isTriple)     flags.push({label:'TRIPLE-MAP FIRMWARE', color:'var(--accent3)'});
+  if (isSNSG40)     flags.push({label:'SNS LAMBDA GATES',  color:'var(--accent3)'});
+  // Tuner badge from CRC lookup
+  if (variantInfo.tuner === 'SNS')   flags.push({label:'SNS TUNING',   color:'var(--accent3)'});
+  if (variantInfo.tuner === 'Eubel') flags.push({label:'EUBEL TUNING GIFHORN', color:'var(--accent)'});
 
   // Variant label for UI
   const variantLabel = {
@@ -1115,6 +1154,9 @@ function fingerprintROM(data) {
   if (isMk2) {
     classification = 'STOCK'; classColor = 'var(--accent3)';
     matchName = 'Polo G40 Mk2 — stock (earlier ECU generation, map offsets differ)';
+  } else if (variantInfo.type === 'TUNED') {
+    classification = 'TUNED'; classColor = 'var(--accent)';
+    matchName = `${variantInfo.car}`;
   } else if (variantInfo.type === 'STOCK' && !isOpenLoop && !isDigilagOff && ignAvg < 25) {
     classification = 'STOCK'; classColor = 'var(--accent3)';
     matchName = `${variantInfo.car} — confirmed stock`;
@@ -1127,8 +1169,10 @@ function fingerprintROM(data) {
   }
 
   return {
-    ignAvg, fuelAvg, lambdaBytes, digilag,
-    isOpenLoop, isDigilagOff, isvDisable,
+    ignAvg, fuelAvg,
+    isOpenLoop, isDigilagOff, isvDisable, isSNSG40,
+    patches, patchMap,
+    sensor,
     flags, classification, classColor, matchName,
     revRPM, revAddr, isTriple, isMk2,
     variant: variantInfo.variant, variantLabel,
@@ -1232,28 +1276,54 @@ function regionName(addr) {
   return null;
 }
 
-// ========== G60 CODE FLAGS ==========
-const G60_FLAGS = [
-  {
-    name: 'Digilag Disable',
-    addr1: 0x4433, expect1: [0x01,0x00], patch1: [0x00,0x00],
-    addr2: 0x4435, expect2: [0x03,0x00], patch2: [0x00,0x00],
-    desc: 'Removes the WOT entry delay at RPM <3149 and >3149. Allows immediate full-power enrichment.',
-    risk: 'Low — calibration change only.'
-  },
-  {
-    name: 'Open Loop Lambda',
-    addr1: 0x6269, expect1: [0xBD,0x6D,0x07], patch1: [0x01,0x01,0x01],
-    desc: 'Disables closed-loop lambda correction for fully open-loop tuning. Required for large injector tunes.',
-    risk: 'High — will run rich/lean without proper fuel map calibration.'
-  },
-  {
-    name: 'ISV Disable',
-    addr1: 0x6287, expect1: [0xBD,0x66,0x0C], patch1: [0x01,0x01,0x01],
-    desc: 'Disables ISV boost bleed control. Useful when ISV is removed or when using external boost controller.',
-    risk: 'Medium — removes software boost limiting via ISV.'
-  },
+// ========== CODE PATCH DEFINITIONS — variant-aware (synced with Python rom_profiles.py) ==========
+const CODE_PATCHES_G60 = [
+  { key: 'digilag_lo',  name: 'Digilag (low RPM)',   addr: 0x4433, stock: [0x01,0x00], patch: [0x00,0x00],
+    desc: 'WOT entry delay at RPM <3149. Stock 0x0100, patched 0x0000.', risk: 'Low' },
+  { key: 'digilag_hi',  name: 'Digilag (high RPM)',  addr: 0x4435, stock: [0x03,0x00], patch: [0x00,0x00],
+    desc: 'WOT entry delay at RPM >3149. Stock 0x0300, patched 0x0000.', risk: 'Low' },
+  { key: 'open_loop',   name: 'Open Loop Lambda',    addr: 0x6269, stock: [0xBD,0x6D,0x07], patch: [0x01,0x01,0x01],
+    desc: 'Disables closed-loop lambda correction. Required for large injector tunes.', risk: 'High' },
+  { key: 'isv_disable', name: 'ISV Disable',         addr: 0x6287, stock: [0xBD,0x66,0x0C], patch: [0x01,0x01,0x01],
+    desc: 'Disables ISV boost bleed control. Use when ISV is removed or with external boost controller.', risk: 'Medium' },
 ];
+const CODE_PATCHES_TRIPLE = [
+  { key: 'open_loop',   name: 'Open Loop Lambda',    addr: 0x6269, stock: [0xBD,0x6D,0x07], patch: [0x01,0x01,0x01],
+    desc: 'Disables closed-loop lambda correction.', risk: 'High' },
+  { key: 'isv_disable', name: 'ISV Disable',         addr: 0x6287, stock: [0xBD,0x66,0x0C], patch: [0x01,0x01,0x01],
+    desc: 'Disables ISV boost bleed control.', risk: 'Medium' },
+];
+const CODE_PATCHES_G40 = [
+  { key: 'sns_idle_lambda_gate',  name: 'SNS Idle Lambda Gate',      addr: 0x593C, stock: [0xBD,0x59,0xA7], patch: [0xBD,0x77,0x50],
+    desc: 'Redirects idle lambda BSR through SNS gate routine @ 0x7750.', risk: 'Medium' },
+  { key: 'sns_wot_lambda_gate',   name: 'SNS WOT Lambda Gate',       addr: 0x646F, stock: [0xBD,0x6A,0x20], patch: [0xBD,0x77,0x1F],
+    desc: 'Redirects WOT lambda BSR through SNS gate routine @ 0x771F.', risk: 'Medium' },
+  { key: 'sns_lambda_branch',     name: 'SNS Lambda Branch Disable', addr: 0x59E5, stock: [0x25,0x05],       patch: [0x01,0x01],
+    desc: 'BCS $+5 → NOP NOP — removes rich-correction conditional.', risk: 'Medium' },
+  { key: 'sns_lambda_magnitude',  name: 'SNS Lambda Correction ×1',  addr: 0x6515, stock: [0x03],            patch: [0x01],
+    desc: 'LDD #3 → LDD #1 — reduces lambda correction authority.', risk: 'Low' },
+];
+
+function getPatchDefs(layout, variant) {
+  if (layout === 'TRIPLE') return CODE_PATCHES_TRIPLE;
+  if (variant === 'G40' || variant === 'G40_MK2') return CODE_PATCHES_G40;
+  return CODE_PATCHES_G60;
+}
+
+function checkPatches(data, layout, variant) {
+  const defs = getPatchDefs(layout, variant);
+  return defs.map(p => {
+    const bytes = Array.from(data.slice(p.addr, p.addr + p.patch.length));
+    const isPatched = bytes.every((b, i) => b === p.patch[i]);
+    const isStock   = bytes.every((b, i) => b === p.stock[i]);
+    return { ...p, isPatched, isStock, bytes };
+  });
+}
+
+// Legacy flat list for backwards compat (used in older renderFlags path)
+const G60_FLAGS = CODE_PATCHES_G60;
+
+
 
 // ========== FILE HANDLING ==========
 const dropZone = document.getElementById('dropZone');
@@ -1446,6 +1516,15 @@ function renderOverview(rom) {
       Computed: <span style="color:var(--accent)">0x${computedCS.toString(16).toUpperCase().padStart(4,'0')}</span> &nbsp;
       <span style="color:${csOK?'var(--accent3)':'var(--accent2)'}">${csOK?'✓ VALID':'⚠ MISMATCH'}</span>
     </div>
+    <div style="margin-top:6px;color:var(--text-dim)">
+      Stored CS: <span style="color:var(--accent)">0x${storedCS.toString(16).toUpperCase().padStart(4,'0')}</span> &nbsp;
+      Computed: <span style="color:var(--accent)">0x${computedCS.toString(16).toUpperCase().padStart(4,'0')}</span> &nbsp;
+      <span style="color:${csOK?'var(--accent3)':'var(--accent2)'}">  ${csOK?'✓ VALID':'⚠ MISMATCH'}</span>
+    </div>
+    <div style="margin-top:6px;color:var(--text-dim)">
+      MAP Sensor: <span style="color:${fp.sensor.kpa===250?'#4b9be8':fp.sensor.kpa===200?'var(--accent3)':'var(--text-dim)'}">${fp.sensor.kpa ? fp.sensor.kpa+' kPa' : 'Unknown'}</span>
+      <span style="font-size:10px;margin-left:8px;color:var(--text-dim)">(${fp.sensor.method})</span>
+    </div>
   `;
   document.getElementById('revLimitInfo').textContent = `Detected rev limit: ${fp.revRPM ? fp.revRPM + ' RPM @ 0x'+fp.revAddr.toString(16).toUpperCase() : 'Unknown'} — checksum ${csOK ? 'valid' : 'needs recalc before flashing'}`;
 
@@ -1456,6 +1535,7 @@ function renderOverview(rom) {
     <div class="row"><span class="label">Variant</span><span class="val" style="color:var(--accent);font-weight:bold">${fp.variantLabel}</span></div>
     <div class="row"><span class="label">Type</span><span class="val" style="color:${fp.classColor}">${fp.classification}</span></div>
     <div class="row"><span class="label">Rev Limit</span><span class="val">${fp.revRPM ? fp.revRPM+' RPM' : '??'}</span></div>
+    <div class="row"><span class="label">MAP Sensor</span><span class="val" style="color:${fp.sensor.kpa===250?'#4b9be8':fp.sensor.kpa===200?'var(--accent3)':'var(--text-dim)'}">${fp.sensor.kpa ? fp.sensor.kpa+' kPa' : '??'}</span></div>
     <div class="row"><span class="label">Lambda</span><span class="val" style="color:${fp.isOpenLoop?'var(--accent2)':'var(--accent3)'}">${fp.isOpenLoop?'OPEN':'CLOSED'}</span></div>
     <div class="row"><span class="label">Detect</span><span class="val" style="color:${fp.detectionConfidence==='HIGH'?'var(--accent3)':fp.detectionConfidence==='MEDIUM'?'var(--accent)':'var(--accent2)'}">${fp.detectionConfidence}</span></div>
     <div class="row"><span class="label">Checksum</span><span class="val" style="color:${csOK?'var(--accent3)':'var(--accent2)'}">${csOK?'VALID':'MISMATCH'}</span></div>
@@ -1602,28 +1682,25 @@ function renderCorrections(rom) {
 function renderFlags(rom) {
   const grid = document.getElementById('flagsGrid');
   grid.innerHTML = '';
-  G60_FLAGS.forEach(flag => {
-    let detected = false, patched = false;
-    if (flag.addr1 !== undefined) {
-      const stock  = flag.expect1 ? flag.expect1.every((b,i) => rom[flag.addr1+i] === b) : null;
-      const isPatch = flag.patch1.every((b,i) => rom[flag.addr1+i] === b);
-      patched = isPatch;
-      detected = stock !== null;
-    }
-    const statusColor = patched ? 'var(--accent3)' : 'var(--text-dim)';
-    const statusLabel = patched ? '✓ PATCHED' : (detected ? '○ STOCK' : '? UNKNOWN');
+  const layout = currentVariant ? currentVariant.layout : 'SINGLE';
+  const variant = currentVariant ? currentVariant.variant : 'G60';
+  const patches = checkPatches(rom, layout, variant);
+
+  patches.forEach(p => {
+    const statusColor = p.isPatched ? 'var(--accent3)' : p.isStock ? 'var(--text-dim)' : 'var(--accent)';
+    const statusLabel = p.isPatched ? '✓ PATCHED' : p.isStock ? '○ STOCK' : '? MODIFIED';
 
     const card = document.createElement('div');
     card.className = 'flag-card';
     card.innerHTML = `
-      <h4>${flag.name} <span style="float:right;color:${statusColor};font-size:11px">${statusLabel}</span></h4>
-      <p>${flag.desc}</p>
-      <p style="color:var(--accent2);margin-bottom:4px">Risk: ${flag.risk}</p>
+      <h4>${p.name} <span style="float:right;color:${statusColor};font-size:11px">${statusLabel}</span></h4>
+      <p>${p.desc}</p>
+      <p style="color:var(--accent2);margin-bottom:4px">Risk: ${p.risk}</p>
       <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim)">
-        Addr: 0x${flag.addr1.toString(16).toUpperCase()}
-        ${flag.addr2 ? ' + 0x'+flag.addr2.toString(16).toUpperCase() : ''}
-        | Stock: ${(flag.expect1||[]).map(b=>b.toString(16).toUpperCase().padStart(2,'0')).join(' ')}
-        | Patch: ${flag.patch1.map(b=>b.toString(16).toUpperCase().padStart(2,'0')).join(' ')}
+        Addr: 0x${p.addr.toString(16).toUpperCase()}
+        | Stock: ${p.stock.map(b=>b.toString(16).toUpperCase().padStart(2,'0')).join(' ')}
+        | Patch: ${p.patch.map(b=>b.toString(16).toUpperCase().padStart(2,'0')).join(' ')}
+        | ROM: ${p.bytes.map(b=>b.toString(16).toUpperCase().padStart(2,'0')).join(' ')}
       </div>
     `;
     grid.appendChild(card);
