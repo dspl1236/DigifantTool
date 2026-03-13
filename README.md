@@ -5,11 +5,11 @@
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20Mac-blue)
 ![ROM](https://img.shields.io/badge/ROM-27C256%2F27C512-yellow)
 ![ECU](https://img.shields.io/badge/ECU-Digifant--1%20G60%2FG40-orange)
-[![Build Windows EXE](https://github.com/dspl1236/DigifantTool/actions/workflows/build.yml/badge.svg)](https://github.com/dspl1236/DigifantTool/actions/workflows/build.yml)
+[![Build Windows EXE](https://github.com/dspl1236/digitool/actions/workflows/build.yml/badge.svg)](https://github.com/dspl1236/digitool/actions/workflows/build.yml)
 
 ## ⬇ Download the Desktop App (Windows)
 
-**→ [Download DigiTool.exe (latest build)](https://github.com/dspl1236/DigifantTool/releases/latest)**
+**→ [Download DigiTool.exe (latest build)](https://github.com/dspl1236/digitool/releases/latest)**
 
 No install required. Just download and run.
 
