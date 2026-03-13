@@ -1,17 +1,19 @@
 """
 ui/table_widgets.py
-Shared editable 1D table widget and helpers used by all correction tabs.
+Shared editable 1D table widget and CorrectionTabBase used by all correction tabs.
+Each tab has a TipPanel sidebar; clicking a table's title label updates the tip.
 """
 
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QScrollArea,
     QLabel, QTableWidget, QTableWidgetItem,
-    QHeaderView, QFrame
+    QHeaderView, QFrame, QSizePolicy
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont, QColor, QBrush
 
 from digitool.rom_profiles import MapDef
+from digitool.ui.map_tips import TipPanel
 
 
 def heat_color(val: int, lo: int, hi: int) -> QColor:
@@ -28,36 +30,47 @@ def heat_color(val: int, lo: int, hi: int) -> QColor:
 
 class Table1D(QWidget):
     """
-    Editable 1D (or flat 2D) table — writes changed cells through to
-    the shared ROM bytearray in-place immediately on edit.
+    Editable 1D (or flat 2D) table. Clicking the title label emits
+    _on_title_clicked so the parent tab can update the TipPanel.
     """
 
     def __init__(self, map_def: MapDef, parent=None):
         super().__init__(parent)
         self._map_def = map_def
         self._rom: bytearray | None = None
+        self._title_clicked_cb = None   # set by CorrectionTabBase after creation
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(2)
 
+        # Clickable title label
         lbl = QLabel(map_def.name)
-        lbl.setStyleSheet("color: #bccdd8; font-size: 11px; font-weight: bold;")
+        lbl.setStyleSheet(
+            "color: #bccdd8; font-size: 11px; font-weight: bold;"
+            "padding: 2px 0px;"
+        )
+        lbl.setCursor(Qt.PointingHandCursor)
+        lbl.mousePressEvent = lambda _: self._fire_title_click()
+        root.addWidget(lbl)
+
         addr_lbl = QLabel(f"@ 0x{map_def.data_addr:04X}  ·  {map_def.cols}×{map_def.rows}")
         addr_lbl.setStyleSheet("color: #3d5068; font-size: 10px; font-family: Consolas;")
-        root.addWidget(lbl)
         root.addWidget(addr_lbl)
 
         self.table = QTableWidget(map_def.rows, map_def.cols)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table.verticalHeader().setVisible(map_def.rows > 1)
-        # Header (~26px) + each row (~28px) + a little padding
         self.table.setMinimumHeight(26 + map_def.rows * 28 + 8)
         self.table.setMaximumHeight(26 + map_def.rows * 28 + 8)
         self.table.setFont(QFont("Consolas", 10))
         root.addWidget(self.table)
 
         self.table.itemChanged.connect(self._on_item_changed)
+
+    def _fire_title_click(self):
+        if self._title_clicked_cb:
+            self._title_clicked_cb(self._map_def.name)
 
     def load(self, rom: bytearray):
         self._rom = rom
@@ -131,31 +144,45 @@ class Table1D(QWidget):
 class CorrectionTabBase(QWidget):
     """
     Base class for all correction tabs.
-    Subclasses define _MAP_NAMES (ordered list of map names to show).
-    All tables stack vertically in a single scrollable column so wide
-    tables (OXS 16×4, RPM scalar 16×1) always render at full width.
+    Left side: scrollable column of Table1D widgets.
+    Right side: TipPanel — updated when a table title is clicked.
+    First table's tip is shown automatically on ROM load.
     """
 
-    _MAP_NAMES: list[str] = []   # override in subclass
+    _MAP_NAMES: list[str] = []
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._tables: list[Table1D] = []
         self._rom: bytearray | None = None
 
-        root = QVBoxLayout(self)
+        root = QHBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
 
+        # ── Left: scrollable tables ───────────────────────────────────────────
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
-        root.addWidget(scroll)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
         self._content = QWidget()
         self._col = QVBoxLayout(self._content)
-        self._col.setContentsMargins(12, 12, 12, 12)
+        self._col.setContentsMargins(12, 12, 8, 12)
         self._col.setSpacing(14)
         scroll.setWidget(self._content)
+
+        root.addWidget(scroll, 1)
+
+        # ── Divider ───────────────────────────────────────────────────────────
+        div = QFrame()
+        div.setFrameShape(QFrame.VLine)
+        div.setStyleSheet("color: #1a2332;")
+        root.addWidget(div)
+
+        # ── Right: tip panel ──────────────────────────────────────────────────
+        self._tip_panel = TipPanel()
+        root.addWidget(self._tip_panel)
 
         self._show_placeholder("No ROM loaded.")
 
@@ -174,6 +201,9 @@ class CorrectionTabBase(QWidget):
             item = self._col.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
+
+    def _on_tip_requested(self, map_name: str):
+        self._tip_panel.show_tip(map_name)
 
     def load_rom(self, result, rom: bytearray):
         self._rom = rom
@@ -194,11 +224,16 @@ class CorrectionTabBase(QWidget):
 
         for md in found:
             t = Table1D(md)
+            t._title_clicked_cb = self._on_tip_requested
             t.load(rom)
             self._tables.append(t)
             self._col.addWidget(t)
 
         self._col.addStretch()
+
+        # Show tip for first table by default
+        if self._tables:
+            self._tip_panel.show_tip(self._tables[0]._map_def.name)
 
     def write_back(self, rom: bytearray) -> bytearray:
         for t in self._tables:
