@@ -546,6 +546,14 @@ def detect_rom(rom_data: bytes) -> DetectionResult:
     #   fill_lo   — fraction of lower 16KB (0x0000–0x3FFF) that is 0x41 fill
     #               All Digifant 1 ROMs use 0x41 as fill; non-Digifant ROMs don't
     #   ign_ok    — fraction of expected ignition map (0x4004–0x4103) in range 60–200
+    #
+    # NOTE — G40 Mk2 limitation:
+    #   Mk2 ROMs have no 0x41 fill, no CE/C1 MAP sensor opcodes, and maps at
+    #   different offsets vs Mk3. Heuristic detection is unreliable for Mk2.
+    #   In practice this is fine: all known Mk2 ECUs use reset vector E000,
+    #   so any real Mk2 ROM (stock or tuned) will be caught by Tier 2.
+    #   The Mk2 heuristic path exists only as a last resort and requires
+    #   both sensor_hit and fill_lo < 0.10 as hard gates to avoid false positives.
     #               Digifant ign bytes encode 7–45° BTDC → ~60–200 raw; noise/code is not
     #   ign_t_ok  — same check at triple-map ign offset (0x4000–0x40FF)
     #   fuel_ok   — fraction of fuel map (0x4104–0x4203) in 10–180
