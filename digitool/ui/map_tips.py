@@ -192,17 +192,22 @@ MAP_TIPS: dict[str, dict] = {
             "steady-state WOT fueling target. Think of it as the cruise control for WOT AFR."
         ),
         "tips": [
-            "Higher values = richer sustained WOT mixture.",
-            "This works in conjunction with the main fuel map — both contribute at WOT.",
-            "Stock values are conservative. Performance tunes increase this for safer AFRs under boost.",
-            "Target 11.5:1–12.5:1 AFR at WOT on a boosted G60/G40.",
+            "Values are additive enrichment units added on top of the main fuel map. "
+            "They are NOT direct AFR numbers — 0 means no extra enrichment, higher = richer.",
+            "Stock values are conservative (many cells near 0). SNS Stage 5 runs "
+            "values of 42–58 across the RPM range for safe AFRs under boost.",
+            "This works in conjunction with the main fuel map — both tables contribute "
+            "at WOT. You need a wideband AFR gauge to know your actual mixture.",
+            "With a wideband, target 11.5:1–12.5:1 AFR (λ0.78–0.85) at WOT on a "
+            "boosted G60/G40. Richer is safer on a supercharged engine.",
             "Every gear change resets the Digi-Lag cycle — the ECU must reach this table "
             "again after each shift. This is why the car feels strong mid-gear but "
             "stumbles briefly after every gearchange at full throttle.",
         ],
         "warning": (
             "Lean WOT fueling on a supercharged engine causes detonation and piston damage. "
-            "Always run richer than stoichiometric at WOT under boost."
+            "Always run richer than stoichiometric at WOT under boost. "
+            "Do not tune this table without a wideband — you cannot guess target AFR from values alone."
         ),
     },
 
@@ -237,9 +242,9 @@ MAP_TIPS: dict[str, dict] = {
         ],
         "warning": (
             "Too much initial enrichment causes a rich stumble on WOT entry. "
-            "Tune in small increments with a wideband AFR gauge. "
-            "On a small-pulley G60 at high boost, the lean spike during lag can reach "
-            "16:1 AFR — this is a serious detonation risk."
+            "Tune in small increments with a wideband AFR gauge — values here are enrichment "
+            "units, not AFR. On a small-pulley G60 at high boost, the lean spike during lag "
+            "can reach 16:1 AFR or worse; this table is your primary defence against it."
         ),
     },
 
