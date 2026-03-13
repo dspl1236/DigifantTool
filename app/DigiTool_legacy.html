@@ -659,20 +659,23 @@ select.editor-input option { background: var(--surface2); }
       <div class="nav-item" onclick="showPanel('ignition')" id="nav-ignition">
         <span class="nav-icon">⚡</span> Ignition Map
       </div>
+      <div class="nav-item" onclick="showPanel('knock')" id="nav-knock">
+        <span class="nav-icon">🔩</span> Knock &amp; Dwell
+      </div>
       <div class="nav-item" onclick="showPanel('fuel')" id="nav-fuel">
         <span class="nav-icon">⛽</span> Fuel Map
       </div>
+      <div class="nav-item" onclick="showPanel('fuelcorr')" id="nav-fuelcorr">
+        <span class="nav-icon">💧</span> Fuel Corrections
+      </div>
       <div class="nav-item" onclick="showPanel('boost')" id="nav-boost">
         <span class="nav-icon">🌀</span> Boost / ISV
-      </div>
-      <div class="nav-item" onclick="showPanel('corrections')" id="nav-corrections">
-        <span class="nav-icon">⚙</span> Corrections
       </div>
       <div class="nav-item" onclick="showPanel('diff')" id="nav-diff">
         <span class="nav-icon">⊕</span> Compare / Diff
       </div>
       <div class="nav-item" onclick="showPanel('flags')" id="nav-flags">
-        <span class="nav-icon">⚑</span> G60 Code Flags
+        <span class="nav-icon">⚑</span> Code Patches
       </div>
       <div class="nav-item" onclick="showPanel('hex')" id="nav-hex">
         <span class="nav-icon">〒</span> Hex View
@@ -795,73 +798,72 @@ select.editor-input option { background: var(--surface2); }
       <!-- BOOST -->
       <div class="panel" id="panel-boost">
         <div class="section-title">Boost &amp; ISV Control</div>
-        <div class="section-sub">Boost cut tables and ISV (Idle Stabilisation Valve) control</div>
+        <div class="section-sub">Boost cut tables, ISV control, WOT enrichment, CO adjustment, RPM scalar</div>
         <div id="mk2BoostWarning" class="alert alert-warn" style="display:none;margin-bottom:12px">⚠ G40 Mk2: 1D table offsets below are confirmed for G60/Mk3 only. Mk2 equivalents at 0x48C0, 0x52D2, 0x53E0 — display may not reflect actual map locations.</div>
         <div class="map-container">
+          <div class="map-card full">
+            <div class="map-header">
+              <span class="map-title">RPM Scalar</span>
+              <span class="map-addr">0x420C — 16×1 16-bit</span>
+            </div>
+            <div class="map-body"><div id="rpmAxisBoost" style="display:flex;gap:4px;flex-wrap:wrap"></div></div>
+          </div>
           <div class="map-card">
             <div class="map-header">
               <span class="map-title">Boost Cut — No Knock</span>
               <span class="map-addr">0x450F — 17 bytes</span>
             </div>
-            <div class="map-body">
-              <div class="table-1d" id="boostCutNK"></div>
-            </div>
+            <div class="map-body"><div class="table-1d" id="boostCutNK"></div></div>
           </div>
           <div class="map-card">
             <div class="map-header">
               <span class="map-title">Boost Cut — With Knock</span>
               <span class="map-addr">0x4520 — 17 bytes</span>
             </div>
-            <div class="map-body">
-              <div class="table-1d" id="boostCutK"></div>
-            </div>
+            <div class="map-body"><div class="table-1d" id="boostCutK"></div></div>
           </div>
           <div class="map-card">
             <div class="map-header">
               <span class="map-title">ISV Boost Control</span>
               <span class="map-addr">0x4531 — 16 bytes</span>
             </div>
-            <div class="map-body">
-              <div class="table-1d" id="isvControl"></div>
-            </div>
+            <div class="map-body"><div class="table-1d" id="isvControl"></div></div>
           </div>
           <div class="map-card">
             <div class="map-header">
               <span class="map-title">WOT Enrichment</span>
               <span class="map-addr">0x4541 — 17 bytes</span>
             </div>
-            <div class="map-body">
-              <div class="table-1d" id="wotEnrich"></div>
+            <div class="map-body"><div class="table-1d" id="wotEnrich"></div></div>
+          </div>
+          <div class="map-card">
+            <div class="map-header">
+              <span class="map-title">CO Adj vs MAP</span>
+              <span class="map-addr">0x4562 — 17 bytes</span>
             </div>
+            <div class="map-body"><div class="table-1d" id="coAdj"></div></div>
+          </div>
+          <div class="map-card">
+            <div class="map-header">
+              <span class="map-title">Startup ISV vs ECT</span>
+              <span class="map-addr">0x446A — 17 bytes</span>
+            </div>
+            <div class="map-body"><div class="table-1d" id="startupISV"></div></div>
           </div>
         </div>
       </div>
 
-      <!-- CORRECTIONS -->
-      <div class="panel" id="panel-corrections">
-        <div class="section-title">Enrichment &amp; Corrections</div>
-        <div class="section-sub">Temperature compensation, accel enrichment, knock multipliers</div>
+      <!-- KNOCK & DWELL -->
+      <div class="panel" id="panel-knock">
+        <div class="section-title">Knock &amp; Dwell</div>
+        <div class="section-sub">Knock control tables, coil dwell, idle ignition and advance corrections</div>
         <div class="map-container">
           <div class="map-card">
             <div class="map-header">
-              <span class="map-title">Warmup Enrichment</span>
-              <span class="map-addr">0x42DD — 17 bytes</span>
+              <span class="map-title">Knock Multiplier</span>
+              <span class="map-addr">0x424C — 16 bytes</span>
             </div>
-            <div class="map-body"><div class="table-1d" id="warmupEnrich"></div></div>
-          </div>
-          <div class="map-card">
-            <div class="map-header">
-              <span class="map-title">ECT Temp Compensation 1</span>
-              <span class="map-addr">0x42FF — 17 bytes</span>
-            </div>
-            <div class="map-body"><div class="table-1d" id="ectComp1"></div></div>
-          </div>
-          <div class="map-card">
-            <div class="map-header">
-              <span class="map-title">IAT Compensation</span>
-              <span class="map-addr">0x42EE — 17 bytes</span>
-            </div>
-            <div class="map-body"><div class="table-1d" id="iatComp"></div></div>
+            <div class="map-body"><div class="table-1d" id="knockMult"></div></div>
           </div>
           <div class="map-card">
             <div class="map-header">
@@ -872,6 +874,13 @@ select.editor-input option { background: var(--surface2); }
           </div>
           <div class="map-card">
             <div class="map-header">
+              <span class="map-title">Knock Decay Rate</span>
+              <span class="map-addr">0x426C — 16 bytes</span>
+            </div>
+            <div class="map-body"><div class="table-1d" id="knockDecay"></div></div>
+          </div>
+          <div class="map-card">
+            <div class="map-header">
               <span class="map-title">Coil Dwell Time</span>
               <span class="map-addr">0x422C — 16 bytes</span>
             </div>
@@ -879,10 +888,130 @@ select.editor-input option { background: var(--surface2); }
           </div>
           <div class="map-card">
             <div class="map-header">
-              <span class="map-title">Accel Enrichment vs ECT</span>
+              <span class="map-title">Advance vs ECT</span>
+              <span class="map-addr">0x429C — 17 bytes</span>
+            </div>
+            <div class="map-body"><div class="table-1d" id="advanceECT"></div></div>
+          </div>
+          <div class="map-card">
+            <div class="map-header">
+              <span class="map-title">Idle Ignition</span>
+              <span class="map-addr">0x447B — 16 bytes</span>
+            </div>
+            <div class="map-body"><div class="table-1d" id="idleIgnition"></div></div>
+          </div>
+          <div class="map-card">
+            <div class="map-header">
+              <span class="map-title">Idle Ign High Limit</span>
+              <span class="map-addr">0x42BD — 16 bytes</span>
+            </div>
+            <div class="map-body"><div class="table-1d" id="idleIgnHigh"></div></div>
+          </div>
+          <div class="map-card">
+            <div class="map-header">
+              <span class="map-title">Idle Ign Low Limit</span>
+              <span class="map-addr">0x42CD — 16 bytes</span>
+            </div>
+            <div class="map-body"><div class="table-1d" id="idleIgnLow"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- FUEL CORRECTIONS -->
+      <div class="panel" id="panel-fuelcorr">
+        <div class="section-title">Fuel Corrections</div>
+        <div class="section-sub">Temperature compensation, enrichment, lambda, injector scaling</div>
+        <div class="map-container">
+          <div class="map-card">
+            <div class="map-header">
+              <span class="map-title">Warmup Enrichment</span>
+              <span class="map-addr">0x42DD — 17 bytes</span>
+            </div>
+            <div class="map-body"><div class="table-1d" id="warmupEnrich"></div></div>
+          </div>
+          <div class="map-card">
+            <div class="map-header">
+              <span class="map-title">ECT Compensation 1</span>
+              <span class="map-addr">0x42FF — 17 bytes</span>
+            </div>
+            <div class="map-body"><div class="table-1d" id="ectComp1"></div></div>
+          </div>
+          <div class="map-card">
+            <div class="map-header">
+              <span class="map-title">ECT Compensation 2</span>
+              <span class="map-addr">0x4310 — 17 bytes</span>
+            </div>
+            <div class="map-body"><div class="table-1d" id="ectComp2"></div></div>
+          </div>
+          <div class="map-card">
+            <div class="map-header">
+              <span class="map-title">IAT Compensation</span>
+              <span class="map-addr">0x42EE — 17 bytes</span>
+            </div>
+            <div class="map-body"><div class="table-1d" id="iatComp"></div></div>
+          </div>
+          <div class="map-card">
+            <div class="map-header">
+              <span class="map-title">Startup Enrichment</span>
+              <span class="map-addr">0x4321 — 17 bytes</span>
+            </div>
+            <div class="map-body"><div class="table-1d" id="startupEnrich"></div></div>
+          </div>
+          <div class="map-card">
+            <div class="map-header">
+              <span class="map-title">Hot Start Enrichment</span>
+              <span class="map-addr">0x43C9 — 17 bytes</span>
+            </div>
+            <div class="map-body"><div class="table-1d" id="hotStart"></div></div>
+          </div>
+          <div class="map-card">
+            <div class="map-header">
+              <span class="map-title">Battery Compensation</span>
+              <span class="map-addr">0x4343 — 17 bytes</span>
+            </div>
+            <div class="map-body"><div class="table-1d" id="batteryComp"></div></div>
+          </div>
+          <div class="map-card">
+            <div class="map-header">
+              <span class="map-title">Injector Lag</span>
+              <span class="map-addr">0x4354 — 17 bytes</span>
+            </div>
+            <div class="map-body"><div class="table-1d" id="injectorLag"></div></div>
+          </div>
+          <div class="map-card">
+            <div class="map-header">
+              <span class="map-title">Accel Enrich Min ΔMAP</span>
+              <span class="map-addr">0x4365 — 16 bytes</span>
+            </div>
+            <div class="map-body"><div class="table-1d" id="accelMinMap"></div></div>
+          </div>
+          <div class="map-card">
+            <div class="map-header">
+              <span class="map-title">Accel Enrich Mult ECT</span>
               <span class="map-addr">0x4375 — 17 bytes</span>
             </div>
             <div class="map-body"><div class="table-1d" id="accelEnrich"></div></div>
+          </div>
+          <div class="map-card">
+            <div class="map-header">
+              <span class="map-title">Accel Enrich Adder ECT</span>
+              <span class="map-addr">0x4386 — 17 bytes</span>
+            </div>
+            <div class="map-body"><div class="table-1d" id="accelAdder"></div></div>
+          </div>
+          <div class="map-card">
+            <div class="map-header">
+              <span class="map-title">OXS Upswing (Lambda)</span>
+              <span class="map-addr">0x441A — 16 bytes</span>
+            </div>
+            <div class="map-body"><div class="table-1d" id="oxsUpswing"></div></div>
+          </div>
+          <div class="map-card">
+            <div class="map-header">
+              <span class="map-title">OXS Downswing (Lambda)</span>
+              <span class="map-addr">0x445A — 16 bytes</span>
+            </div>
+            <div class="map-body"><div class="table-1d" id="oxsDownswing"></div></div>
           </div>
         </div>
       </div>
@@ -1408,7 +1537,8 @@ function renderAll() {
   renderIgnition(rom);
   renderFuel(rom);
   renderBoost(rom);
-  renderCorrections(rom);
+  renderKnock(rom);
+  renderFuelCorr(rom);
   renderFlags(rom);
   renderHex(rom);
   updateDiff();
@@ -1663,20 +1793,55 @@ function render1D(rom, addr, size, containerId, labelFn, scheme='fuel') {
 }
 
 function renderBoost(rom) {
-  render1D(rom, 0x450F, 17, 'boostCutNK', (v,i) => `[${i}] Raw: ${v} (${v} kPa approx)`);
-  render1D(rom, 0x4520, 17, 'boostCutK',  (v,i) => `[${i}] Raw: ${v}`);
-  render1D(rom, 0x4531, 16, 'isvControl', (v,i) => `[${i}] ISV duty: ${v}`);
-  render1D(rom, 0x4541, 17, 'wotEnrich',  (v,i) => `[${i}] WOT enrich: ${v}`);
+  // RPM scalar in boost panel
+  const rpmEl = document.getElementById('rpmAxisBoost');
+  if (rpmEl) {
+    rpmEl.innerHTML = '';
+    for (let i = 0; i < 16; i++) {
+      const raw = (rom[0x420C + i*2] << 8) | rom[0x420C + i*2 + 1];
+      const rpm = raw ? Math.round(30000000 / raw) : 0;
+      const pill = document.createElement('div');
+      pill.className = 'rpm-pill';
+      pill.textContent = rpm || '??';
+      pill.title = `Entry ${i+1}: raw 0x${raw.toString(16).toUpperCase()} = ${rpm} RPM`;
+      rpmEl.appendChild(pill);
+    }
+  }
+  render1D(rom, 0x450F, 17, 'boostCutNK',  (v,i) => `[${i}] Raw: ${v} (~${Math.round(v/255*200)} kPa)`);
+  render1D(rom, 0x4520, 17, 'boostCutK',   (v,i) => `[${i}] Raw: ${v} (~${Math.round(v/255*200)} kPa)`);
+  render1D(rom, 0x4531, 16, 'isvControl',  (v,i) => `[${i}] ISV duty: ${v}`);
+  render1D(rom, 0x4541, 17, 'wotEnrich',   (v,i) => `[${i}] WOT enrich: ${v}`);
+  render1D(rom, 0x4562, 17, 'coAdj',       (v,i) => `[${i}] CO adj: ${v}`);
+  render1D(rom, 0x446A, 17, 'startupISV',  (v,i) => `[${i}] ISV startup: ${v}`);
 }
 
-function renderCorrections(rom) {
-  render1D(rom, 0x42DD, 17, 'warmupEnrich',  (v,i) => `[${i}] Warmup: ${v}`);
-  render1D(rom, 0x42FF, 17, 'ectComp1',      (v,i) => `[${i}] ECT Comp: ${v}`);
-  render1D(rom, 0x42EE, 17, 'iatComp',       (v,i) => `[${i}] IAT Comp: ${v}`);
-  render1D(rom, 0x425C, 16, 'knockRetard',   (v,i) => `[${i}] Knock retard: ${v}`);
-  render1D(rom, 0x422C, 16, 'coilDwell',     (v,i) => `[${i}] Dwell: ${v}`);
-  render1D(rom, 0x4375, 17, 'accelEnrich',   (v,i) => `[${i}] Accel: ${v}`);
+function renderKnock(rom) {
+  render1D(rom, 0x424C, 16, 'knockMult',   (v,i) => `[${i}] Knock multiplier: ${v}`, 'ignition');
+  render1D(rom, 0x425C, 16, 'knockRetard', (v,i) => `[${i}] Knock retard rate: ${v}`, 'ignition');
+  render1D(rom, 0x426C, 16, 'knockDecay',  (v,i) => `[${i}] Knock decay rate: ${v}`, 'ignition');
+  render1D(rom, 0x422C, 16, 'coilDwell',   (v,i) => `[${i}] Dwell: ${v}`);
+  render1D(rom, 0x429C, 17, 'advanceECT',  (v,i) => `[${i}] Advance vs ECT: ${v}`, 'ignition');
+  render1D(rom, 0x447B, 16, 'idleIgnition',(v,i) => `[${i}] Idle ign: ${v}`, 'ignition');
+  render1D(rom, 0x42BD, 16, 'idleIgnHigh', (v,i) => `[${i}] Idle ign high limit: ${v}`, 'ignition');
+  render1D(rom, 0x42CD, 16, 'idleIgnLow',  (v,i) => `[${i}] Idle ign low limit: ${v}`, 'ignition');
 }
+
+function renderFuelCorr(rom) {
+  render1D(rom, 0x42DD, 17, 'warmupEnrich',  (v,i) => `[${i}] Warmup: ${v}`);
+  render1D(rom, 0x42FF, 17, 'ectComp1',      (v,i) => `[${i}] ECT Comp 1: ${v}`);
+  render1D(rom, 0x4310, 17, 'ectComp2',      (v,i) => `[${i}] ECT Comp 2: ${v}`);
+  render1D(rom, 0x42EE, 17, 'iatComp',       (v,i) => `[${i}] IAT Comp: ${v}`);
+  render1D(rom, 0x4321, 17, 'startupEnrich', (v,i) => `[${i}] Startup enrich: ${v}`);
+  render1D(rom, 0x43C9, 17, 'hotStart',      (v,i) => `[${i}] Hot start: ${v}`);
+  render1D(rom, 0x4343, 17, 'batteryComp',   (v,i) => `[${i}] Battery comp: ${v}`);
+  render1D(rom, 0x4354, 17, 'injectorLag',   (v,i) => `[${i}] Injector lag: ${v}`);
+  render1D(rom, 0x4365, 16, 'accelMinMap',   (v,i) => `[${i}] Accel min ΔMAP: ${v}`);
+  render1D(rom, 0x4375, 17, 'accelEnrich',   (v,i) => `[${i}] Accel mult ECT: ${v}`);
+  render1D(rom, 0x4386, 17, 'accelAdder',    (v,i) => `[${i}] Accel adder ECT: ${v}`);
+  render1D(rom, 0x441A, 16, 'oxsUpswing',    (v,i) => `[${i}] OXS upswing: ${v}`);
+  render1D(rom, 0x445A, 16, 'oxsDownswing',  (v,i) => `[${i}] OXS downswing: ${v}`);
+}
+
 
 // ---- FLAGS ----
 function renderFlags(rom) {
