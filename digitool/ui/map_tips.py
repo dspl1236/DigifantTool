@@ -186,16 +186,19 @@ MAP_TIPS: dict[str, dict] = {
 
     "WOT Enrichment": {
         "what": (
-            "Sustained WOT fuel enrichment multiplier vs ECT. Once the WOT switch "
-            "closes, the ECU uses this table (combined with the main fuel map) "
-            "to determine open-loop fueling. Think of it as a sustained WOT fuel correction "
-            "that runs the entire time WOT is held."
+            "Sustained WOT fuel enrichment — the open-loop fuel level held for the entire "
+            "time WOT is active. Once the ECU finally exits closed-loop after the Digi-Lag "
+            "period, it settles onto this table (combined with the main fuel map) as its "
+            "steady-state WOT fueling target. Think of it as the cruise control for WOT AFR."
         ),
         "tips": [
-            "Higher values = richer WOT mixture.",
+            "Higher values = richer sustained WOT mixture.",
             "This works in conjunction with the main fuel map — both contribute at WOT.",
             "Stock values are conservative. Performance tunes increase this for safer AFRs under boost.",
             "Target 11.5:1–12.5:1 AFR at WOT on a boosted G60/G40.",
+            "Every gear change resets the Digi-Lag cycle — the ECU must reach this table "
+            "again after each shift. This is why the car feels strong mid-gear but "
+            "stumbles briefly after every gearchange at full throttle.",
         ],
         "warning": (
             "Lean WOT fueling on a supercharged engine causes detonation and piston damage. "
@@ -205,22 +208,38 @@ MAP_TIPS: dict[str, dict] = {
 
     "WOT Initial Enrichment": {
         "what": (
-            "The initial shot of extra fuel injected the moment the WOT switch closes. "
-            "This 9×5 table provides an immediate enrichment pulse to prevent the lean "
-            "spike that occurs during the transition from closed-loop to WOT open-loop — "
-            "the root cause of Digi-Lag. Axes are ECT vs RPM."
+            "The immediate fuel shot fired the instant the WOT switch closes. "
+            "This 9×5 table is your primary weapon against Digi-Lag.\n\n"
+            "Digi-Lag is a deliberate VW firmware feature: at WOT the ECU does NOT "
+            "immediately switch to open-loop. It stays in closed-loop lambda control for "
+            "a preset time period (typically 1–3 seconds, RPM-dependent) while it "
+            "compensates for the change in carbon canister scavenging pressure at WOT. "
+            "During this window the mixture cycles lean, sometimes to 16:1 or worse "
+            "under boost. This table injects extra fuel at the moment of WOT to blunt "
+            "that lean spike while the lag period runs out.\n\n"
+            "Critically: Digi-Lag is time-based, not boost-based. A smaller pulley "
+            "builds boost faster but the lag window is the same length — meaning "
+            "the lean spike hits harder at higher boost levels."
         ),
         "tips": [
-            "This is the primary tool for fighting Digi-Lag.",
-            "Increasing values here enriches the initial WOT transition, reducing the lean spike.",
-            "The Digilag code patch (in Code Patches tab) also helps by disabling the lambda "
-            "cycling delay, but this table controls the actual fuel shot.",
-            "Tune this alongside WOT Enrichment for smooth WOT entry.",
+            "Increasing values here enriches the WOT transition, reducing the lean spike "
+            "during the lag window.",
+            "The Digilag code patch (Code Patches tab) addresses the root cause by "
+            "disabling the lambda holdoff timer — use both together for best results.",
+            "The SNS no-lag solution goes further: it removes reliance on the WOT switch "
+            "entirely and triggers open-loop enrichment via MAP pressure (boost level) instead.",
+            "Removing the carbon canister does NOT fix Digi-Lag — it is hardcoded "
+            "in the ECU firmware regardless of hardware.",
+            "Tune this alongside WOT Enrichment for a smooth WOT entry.",
+            "Digi-Lag resets every gear change. More aggressive enrichment here "
+            "directly improves mid-gear-change throttle response.",
             "Cold engine (left columns) typically needs more initial enrichment than warm.",
         ],
         "warning": (
             "Too much initial enrichment causes a rich stumble on WOT entry. "
-            "Tune in small increments with a wideband."
+            "Tune in small increments with a wideband AFR gauge. "
+            "On a small-pulley G60 at high boost, the lean spike during lag can reach "
+            "16:1 AFR — this is a serious detonation risk."
         ),
     },
 
