@@ -253,14 +253,26 @@ MAP_TIPS: dict[str, dict] = {
             "CO (carbon monoxide / mixture) adjustment vs MAP pressure. "
             "This is effectively the ECU's equivalent of the CO potentiometer trimmer — "
             "a base fuel correction applied across the load range. "
-            "It adjusts the overall mixture richness at different MAP readings."
+            "It adjusts the overall mixture richness at different MAP readings.\n\n"
+            "Note: Digifant 1 has no 'desired lambda' target table. The ECU always "
+            "targets λ1.0 (stoichiometric, 14.7:1 AFR) in closed-loop by design — "
+            "the oxygen sensor feedback loop enforces this automatically. "
+            "This table is the closest thing to a load-based lambda bias."
         ),
         "tips": [
-            "Think of this as a global fuel trim per load point.",
-            "The physical CO pot on the ECU loom is a rough trim — this table is the fine control.",
-            "Raising all values enriches the mixture globally.",
-            "Use this to compensate for injector size changes or AFM swaps.",
+            "Think of this as a global fuel trim per load point — the nearest thing "
+            "Digifant 1 has to a desired lambda map.",
+            "In closed-loop (cruise/part throttle), the O2 sensor corrects back to "
+            "λ1.0 automatically. This table biases the base mixture before that correction.",
+            "The physical CO pot on the ECU loom is a coarse global trim — "
+            "this table gives per-load-point fine control on top of that.",
+            "Raising all values enriches the mixture globally across all load points.",
+            "Use this to compensate for injector size changes, AFM swaps, or a "
+            "different CO pot resistance.",
             "Stock CO pot setting is 500Ω. This table works on top of that base.",
+            "To skew closed-loop lambda richer or leaner, use the OXS Upswing / "
+            "Downswing asymmetry in the Lambda/OXS tab — making upswing steps larger "
+            "than downswing steps biases the average mixture rich.",
         ],
         "warning": None,
     },
@@ -587,6 +599,10 @@ MAP_TIPS: dict[str, dict] = {
             "Larger values cause faster closed-loop response but can cause hunting (oscillation).",
             "Stock values give stable, smooth lambda correction.",
             "If the AFR oscillates widely at cruise, reduce these values.",
+            "LAMBDA BIAS TRICK: Digifant 1 has no 'desired lambda' target table — it always "
+            "aims for λ1.0. To bias closed-loop AFR slightly richer than stoich, make "
+            "Upswing steps larger than Downswing steps. The ECU will spend more time "
+            "correcting lean → it oscillates around a point slightly richer than λ1.0.",
             "The SNS open-loop patch (Code Patches) bypasses this table entirely.",
         ],
         "warning": None,
@@ -601,9 +617,12 @@ MAP_TIPS: dict[str, dict] = {
         ),
         "tips": [
             "Higher values = larger lean correction step per lambda cycle.",
-            "Should be balanced with the OXS Upswing table.",
-            "Asymmetric upswing/downswing values cause the lambda to oscillate around "
-            "a biased point (useful for running slightly rich at cruise).",
+            "Should be balanced with the OXS Upswing table for a stable λ1.0 idle.",
+            "LAMBDA BIAS TRICK: Make Downswing steps smaller than Upswing steps to bias "
+            "closed-loop lambda slightly rich. This is the only way to target a non-stoich "
+            "AFR in closed-loop on Digifant 1 — there is no dedicated desired-lambda table.",
+            "Asymmetric upswing/downswing is a valid mild tuning approach for "
+            "a slightly protective mixture at cruise without going fully open-loop.",
             "The SNS open-loop patch (Code Patches) bypasses this table entirely.",
         ],
         "warning": None,

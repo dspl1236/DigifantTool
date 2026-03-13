@@ -197,6 +197,47 @@ class OverviewTab(QWidget):
         # Populated dynamically on ROM load via _rebuild_flag_badges()
         root.addWidget(self.grp_flags)
 
+        # ── Digi-Lag removal ─────────────────────────────────────────────────
+        from PyQt5.QtWidgets import QCheckBox
+        self.grp_digilag = QGroupBox("Digi-Lag")
+        dl = QVBoxLayout(self.grp_digilag)
+        dl.setSpacing(8)
+
+        # Status row
+        self._digilag_status_row = QHBoxLayout()
+        self._digilag_status_icon = QLabel("●")
+        self._digilag_status_icon.setFixedWidth(18)
+        self._digilag_status_lbl  = QLabel("No ROM loaded")
+        self._digilag_status_lbl.setStyleSheet("color: #3d5068; font-size: 11px;")
+        self._digilag_status_row.addWidget(self._digilag_status_icon)
+        self._digilag_status_row.addWidget(self._digilag_status_lbl)
+        self._digilag_status_row.addStretch()
+        dl.addLayout(self._digilag_status_row)
+
+        # Compensation checkbox
+        self._chk_wot_comp = QCheckBox(
+            "Also increase WOT Initial Enrichment to compensate (+8 on mid/high boost cells)"
+        )
+        self._chk_wot_comp.setStyleSheet("color: #7ab3cc; font-size: 11px;")
+        self._chk_wot_comp.setChecked(True)
+        self._chk_wot_comp.setVisible(False)
+        dl.addWidget(self._chk_wot_comp)
+
+        # Action button
+        self._btn_digilag = QPushButton("Remove Digi-Lag")
+        self._btn_digilag.setFixedWidth(180)
+        self._btn_digilag.setVisible(False)
+        self._btn_digilag.setStyleSheet(
+            "QPushButton { background: #1a2010; color: #e8b84b; border: 1px solid #e8b84b; "
+            "padding: 6px 16px; font-size: 12px; font-weight: bold; }"
+            "QPushButton:hover { background: #2a3820; }"
+            "QPushButton:pressed { background: #3a4830; }"
+        )
+        self._btn_digilag.clicked.connect(self._apply_digilag_patch)
+        dl.addWidget(self._btn_digilag)
+
+        root.addWidget(self.grp_digilag)
+
         # ── Map address table (collapsible) ──────────────────────────────────
         from PyQt5.QtWidgets import QPlainTextEdit
         grp_maps = QGroupBox("Map Verification")
@@ -303,6 +344,9 @@ class OverviewTab(QWidget):
             else:
                 self._set_badge(badge, "STOCK", "#2dff6e")
 
+        # Digi-Lag panel
+        self._update_digilag_ui(result, bytearray(rom))
+
         self.btn_save.setEnabled(True)
         self.btn_save_as.setEnabled(True)
         self.btn_save_512.setEnabled(True)
@@ -331,6 +375,100 @@ class OverviewTab(QWidget):
         self.btn_save_512.setEnabled(False)
         self.lbl_map_summary.setText("No ROM loaded")
         self.wgt_map_table.setPlainText("")
+
+    # ── Digi-Lag helpers ──────────────────────────────────────────────────────
+
+    def _update_digilag_ui(self, result: DetectionResult, rom: bytearray):
+        """Detect digilag patch state and configure the Digi-Lag group box."""
+        from digitool.rom_profiles import MAP_FAMILY_TRIPLE, MAP_FAMILY_MK2
+
+        # Hide entirely for unsupported families
+        if result.family in (MAP_FAMILY_TRIPLE, MAP_FAMILY_MK2):
+            self.grp_digilag.setVisible(False)
+            return
+
+        self.grp_digilag.setVisible(True)
+
+        lo_stock = rom[0x6342] == 0x01
+        hi_stock = rom[0x6347] == 0x03
+        lo_patch = rom[0x6342] == 0x00
+        hi_patch = rom[0x6347] == 0x00
+
+        if lo_patch and hi_patch:
+            # Already removed
+            self._digilag_status_icon.setStyleSheet("color: #2dff6e; font-size: 14px;")
+            self._digilag_status_icon.setText("✓")
+            self._digilag_status_lbl.setText("Digi-Lag already removed")
+            self._digilag_status_lbl.setStyleSheet("color: #2dff6e; font-size: 11px;")
+            self._btn_digilag.setVisible(False)
+            self._chk_wot_comp.setVisible(False)
+
+        elif lo_stock and hi_stock:
+            # Stock — ready to patch
+            self._digilag_status_icon.setStyleSheet("color: #e8b84b; font-size: 14px;")
+            self._digilag_status_icon.setText("●")
+            self._digilag_status_lbl.setText(
+                "Stock digi-lag timers detected  (0x6342=01  0x6347=03)"
+            )
+            self._digilag_status_lbl.setStyleSheet("color: #e8b84b; font-size: 11px;")
+            self._btn_digilag.setText("Remove Digi-Lag")
+            self._btn_digilag.setVisible(True)
+            self._chk_wot_comp.setVisible(True)
+
+        elif lo_patch and not hi_patch:
+            # Partial — low timer zeroed, high still stock
+            self._digilag_status_icon.setStyleSheet("color: #e8793a; font-size: 14px;")
+            self._digilag_status_icon.setText("⚠")
+            self._digilag_status_lbl.setText(
+                "Partially patched — low RPM timer zeroed, high RPM timer still stock"
+            )
+            self._digilag_status_lbl.setStyleSheet("color: #e8793a; font-size: 11px;")
+            self._btn_digilag.setText("Complete Digi-Lag Removal")
+            self._btn_digilag.setVisible(True)
+            self._chk_wot_comp.setVisible(True)
+
+        else:
+            # Unknown / custom values
+            lo = rom[0x6342]; hi = rom[0x6347]
+            self._digilag_status_icon.setStyleSheet("color: #3d5068; font-size: 14px;")
+            self._digilag_status_icon.setText("?")
+            self._digilag_status_lbl.setText(
+                f"Unknown timer values  (0x6342={lo:02X}  0x6347={hi:02X}) — "
+                f"may be a custom tune"
+            )
+            self._digilag_status_lbl.setStyleSheet("color: #3d5068; font-size: 11px;")
+            self._btn_digilag.setText("Zero Digi-Lag Timers Anyway")
+            self._btn_digilag.setVisible(True)
+            self._chk_wot_comp.setVisible(True)
+
+    def _apply_digilag_patch(self):
+        """Write digilag patch bytes into the in-memory ROM and emit sig_rom_mutated."""
+        if self._rom is None or self._result is None:
+            return
+
+        rom = bytearray(self._rom)
+
+        # Zero the two timer bytes only — do NOT touch neighbouring instruction bytes
+        # 0x6342 = low RPM timer  (stock=0x01, patch=0x00)
+        # 0x6347 = high RPM timer (stock=0x03, patch=0x00)
+        rom[0x6342] = 0x00
+        rom[0x6347] = 0x00
+
+        # Optional WOT Initial Enrichment compensation
+        # WOT Initial table @ 0x4573, 9×5 = 45 bytes (9 cols = ECT steps, 5 rows = load/boost)
+        # Add +8 to mid/high boost rows (rows 3-5) at mid/high RPM cols (cols 6-9)
+        # These are the cells most exposed to the lag lean spike
+        if self._chk_wot_comp.isChecked():
+            BASE = 0x4573
+            COLS = 9
+            for row in range(2, 5):      # rows 3,4,5 (0-indexed) = higher boost
+                for col in range(5, 9):  # cols 6-9 = mid/high RPM
+                    idx = BASE + row * COLS + col
+                    rom[idx] = min(0xFF, rom[idx] + 8)
+
+        self._rom = bytes(rom)
+        self._update_digilag_ui(self._result, bytearray(rom))
+        self.sig_rom_mutated.emit(rom)
 
     def _toggle_map_table(self, checked: bool):
         self.wgt_map_table.setVisible(checked)
