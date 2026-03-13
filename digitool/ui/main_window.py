@@ -3,6 +3,8 @@ ui/main_window.py
 Main application window — assembles all tabs and handles ROM file I/O.
 """
 
+import os
+
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QTabWidget,
     QStatusBar, QLabel, QFileDialog, QMessageBox,
@@ -12,7 +14,7 @@ from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QFont, QColor
 
 from digitool.version import WINDOW_TITLE, APP_VERSION
-from digitool.rom_profiles import detect_rom, DetectionResult
+from digitool.rom_profiles import detect_rom, normalize_rom_image, DetectionResult
 
 from digitool.ui.overview_tab    import OverviewTab
 from digitool.ui.map_editor_tab  import MapEditorTab
@@ -122,16 +124,24 @@ class MainWindow(QMainWindow):
 
         try:
             with open(path, "rb") as f:
-                data = f.read()
+                raw = f.read()
         except OSError as e:
             QMessageBox.critical(self, "Error", f"Could not read file:\n{e}")
             return
 
+        # Normalize: handles 27C512 (64KB mirrored), sub-32KB, padded images, etc.
+        data, notes = normalize_rom_image(raw)
+
+        if notes:
+            QMessageBox.information(
+                self, "ROM Image Normalized",
+                "\n".join(notes) + f"\n\nFile: {os.path.basename(path)}\nLoaded as: {len(data):,} bytes"
+            )
+
         if len(data) != 0x8000:
-            QMessageBox.warning(
-                self, "Wrong Size",
-                f"Expected 32768 bytes (32KB), got {len(data):,} bytes.\n"
-                f"Only 27C256 EPROM dumps are supported."
+            QMessageBox.critical(
+                self, "Unsupported Size",
+                f"Could not normalize to 32 KB.\nGot {len(data):,} bytes after processing."
             )
             return
 

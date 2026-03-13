@@ -490,6 +490,96 @@ def detect_map_sensor(rom: bytes) -> tuple[int, str]:
 # Main detection function
 # ---------------------------------------------------------------------------
 
+# Size constants
+_SIZE_32K  = 0x8000   # 32768 — standard 27C256 / ECU ROM
+_SIZE_64K  = 0x10000  # 65536 — 27C512 full chip read
+
+
+def normalize_rom_image(raw: bytes) -> tuple[bytes, list[str]]:
+    """
+    Accept any reasonable ROM image and return a clean 32KB bytearray
+    ready for detect_rom(), plus a list of human-readable notes about
+    what was done.
+
+    Handled cases:
+      32 KB exactly     → pass through unchanged
+      64 KB mirrored    → lo == hi halves, use lower half
+      64 KB upper=0xFF  → programmer left upper blank, use lower half
+      64 KB lower=0xFF  → programmer put ROM in upper half, use upper half
+      64 KB other       → use whichever half has a plausible reset vector,
+                          fall back to lower half
+      < 32 KB           → pad to 32 KB with 0xFF, warn
+      256 bytes         → just the first map page, pad and warn loudly
+      > 64 KB           → truncate to 64 KB then apply 64 KB rules
+    """
+    notes: list[str] = []
+    size = len(raw)
+
+    # Truncate absurdly large files first
+    if size > _SIZE_64K:
+        raw = raw[:_SIZE_64K]
+        notes.append(f"File truncated from {size:,} to 65,536 bytes.")
+        size = _SIZE_64K
+
+    # ── 32 KB — standard case ────────────────────────────────────────────────
+    if size == _SIZE_32K:
+        return bytes(raw), notes
+
+    # ── 64 KB — 27C512 chip read ─────────────────────────────────────────────
+    if size == _SIZE_64K:
+        lo = raw[:_SIZE_32K]
+        hi = raw[_SIZE_32K:]
+
+        lo_ff = all(b == 0xFF for b in lo)
+        hi_ff = all(b == 0xFF for b in hi)
+
+        if lo == hi:
+            notes.append("64 KB file: both halves identical (mirrored 27C512). Using lower half.")
+            return bytes(lo), notes
+
+        if hi_ff and not lo_ff:
+            notes.append("64 KB file: upper half is 0xFF blank. Using lower half.")
+            return bytes(lo), notes
+
+        if lo_ff and not hi_ff:
+            notes.append("64 KB file: lower half is 0xFF blank. Using upper half.")
+            return bytes(hi), notes
+
+        # Both halves have data but differ — pick by reset vector plausibility
+        _KNOWN_VECS = {b'\x45\xFD', b'\x4C\x14', b'\x54\xAA', b'\xE0\x00'}
+        lo_vec = bytes(lo[0x7FFE:0x8000])
+        hi_vec = bytes(hi[0x7FFE:0x8000])
+        if lo_vec in _KNOWN_VECS and hi_vec not in _KNOWN_VECS:
+            notes.append(f"64 KB file: lower half has known reset vector {lo_vec.hex().upper()}. Using lower half.")
+            return bytes(lo), notes
+        if hi_vec in _KNOWN_VECS and lo_vec not in _KNOWN_VECS:
+            notes.append(f"64 KB file: upper half has known reset vector {hi_vec.hex().upper()}. Using upper half.")
+            return bytes(hi), notes
+
+        # Both or neither have known vectors — default to lower, warn
+        notes.append(
+            f"64 KB file: halves differ and neither has a recognised reset vector "
+            f"(lo={lo_vec.hex().upper()}, hi={hi_vec.hex().upper()}). "
+            f"Using lower half — verify if maps look wrong."
+        )
+        return bytes(lo), notes
+
+    # ── < 32 KB ──────────────────────────────────────────────────────────────
+    if size == 256:
+        notes.append(
+            "WARNING: Only 256 bytes loaded — this looks like a single map page, "
+            "not a full ROM. Padded to 32 KB with 0xFF. Maps will be incomplete."
+        )
+    elif size < _SIZE_32K:
+        notes.append(
+            f"File is {size:,} bytes (expected 32,768). "
+            f"Padded to 32 KB with 0xFF — some data may be missing."
+        )
+
+    padded = bytes(raw) + bytes(0xFF for _ in range(_SIZE_32K - size))
+    return padded, notes
+
+
 def detect_rom(rom_data: bytes) -> DetectionResult:
     """
     Identify a Digifant 1 ROM from raw bytes.
