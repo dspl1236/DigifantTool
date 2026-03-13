@@ -51,7 +51,9 @@ class Table1D(QWidget):
         self.table = QTableWidget(map_def.rows, map_def.cols)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table.verticalHeader().setVisible(map_def.rows > 1)
-        self.table.setMaximumHeight(30 + map_def.rows * 28)
+        # Header (~26px) + each row (~28px) + a little padding
+        self.table.setMinimumHeight(26 + map_def.rows * 28 + 8)
+        self.table.setMaximumHeight(26 + map_def.rows * 28 + 8)
         self.table.setFont(QFont("Consolas", 10))
         root.addWidget(self.table)
 
@@ -129,8 +131,9 @@ class Table1D(QWidget):
 class CorrectionTabBase(QWidget):
     """
     Base class for all correction tabs.
-    Subclasses define _MAP_NAMES (ordered list of map names to show)
-    and call _build_tables(result, rom) from load_rom().
+    Subclasses define _MAP_NAMES (ordered list of map names to show).
+    All tables stack vertically in a single scrollable column so wide
+    tables (OXS 16×4, RPM scalar 16×1) always render at full width.
     """
 
     _MAP_NAMES: list[str] = []   # override in subclass
@@ -149,41 +152,32 @@ class CorrectionTabBase(QWidget):
         root.addWidget(scroll)
 
         self._content = QWidget()
-        self._grid = QHBoxLayout(self._content)
-        self._grid.setContentsMargins(12, 12, 12, 12)
-        self._grid.setSpacing(16)
+        self._col = QVBoxLayout(self._content)
+        self._col.setContentsMargins(12, 12, 12, 12)
+        self._col.setSpacing(14)
         scroll.setWidget(self._content)
-
-        self._col_a = QVBoxLayout()
-        self._col_b = QVBoxLayout()
-        self._col_a.setSpacing(14)
-        self._col_b.setSpacing(14)
-        self._grid.addLayout(self._col_a)
-        self._grid.addLayout(self._col_b)
 
         self._show_placeholder("No ROM loaded.")
 
     def _show_placeholder(self, msg: str):
-        self._clear_cols()
+        self._clear_col()
         lbl = QLabel(msg)
         lbl.setAlignment(Qt.AlignCenter)
         lbl.setStyleSheet("color: #3d5068; font-size: 13px;")
         lbl.setWordWrap(True)
-        self._col_a.addWidget(lbl)
-        self._col_a.addStretch()
-        self._col_b.addStretch()
+        self._col.addWidget(lbl)
+        self._col.addStretch()
 
-    def _clear_cols(self):
+    def _clear_col(self):
         self._tables = []
-        for layout in (self._col_a, self._col_b):
-            while layout.count():
-                item = layout.takeAt(0)
-                if item.widget():
-                    item.widget().deleteLater()
+        while self._col.count():
+            item = self._col.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
 
     def load_rom(self, result, rom: bytearray):
         self._rom = rom
-        self._clear_cols()
+        self._clear_col()
 
         if result.is_mk2:
             self._show_placeholder(
@@ -191,7 +185,6 @@ class CorrectionTabBase(QWidget):
             )
             return
 
-        # Build a name→MapDef lookup from result.maps
         map_lookup = {m.name: m for m in result.maps}
         found = [map_lookup[n] for n in self._MAP_NAMES if n in map_lookup]
 
@@ -199,17 +192,13 @@ class CorrectionTabBase(QWidget):
             self._show_placeholder("No tables available for this variant.")
             return
 
-        for i, md in enumerate(found):
+        for md in found:
             t = Table1D(md)
             t.load(rom)
             self._tables.append(t)
-            if i % 2 == 0:
-                self._col_a.addWidget(t)
-            else:
-                self._col_b.addWidget(t)
+            self._col.addWidget(t)
 
-        self._col_a.addStretch()
-        self._col_b.addStretch()
+        self._col.addStretch()
 
     def write_back(self, rom: bytearray) -> bytearray:
         for t in self._tables:
