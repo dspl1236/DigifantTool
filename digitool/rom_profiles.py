@@ -269,8 +269,8 @@ FAMILY_MAPS: Dict[str, List[MapDef]] = {
 
 # G60 single-map patches (reset vector 45FD)
 CODE_PATCHES_G60 = {
-    "digilag_lo":  dict(addr=0x4433, stock=b'\x01\x00', patch=b'\x00\x00',         label="Digilag (low RPM)"),
-    "digilag_hi":  dict(addr=0x4435, stock=b'\x03\x00', patch=b'\x00\x00',         label="Digilag (high RPM)"),
+    "digilag_lo":  dict(addr=0x6342, stock=b'\x01\x00', patch=b'\x00\x00',         label="Digilag (low RPM)"),
+    "digilag_hi":  dict(addr=0x6347, stock=b'\x03\x00', patch=b'\x00\x00',         label="Digilag (high RPM)"),
     "open_loop":   dict(addr=0x6269, stock=b'\xBD\x6D\x07', patch=b'\x01\x01\x01', label="Open Loop Lambda"),
     "isv_disable": dict(addr=0x6287, stock=b'\xBD\x66\x0C', patch=b'\x01\x01\x01', label="ISV Disable"),
 }
