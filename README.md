@@ -118,9 +118,12 @@ python build.py
 
 | Patch | Address | Stock | Patched |
 |-------|---------|-------|---------|
-| Digilag Disable | 0x4433/0x4435 | 01 00 / 03 00 | 00 00 / 00 00 |
+| Digilag (low RPM) | 0x6342 | 01 | 00 |
+| Digilag (high RPM) | 0x6347 | 03 | 00 |
 | Open Loop Lambda | 0x6269 | BD 6D 07 | 01 01 01 |
 | ISV Disable | 0x6287 | BD 66 0C | 01 01 01 |
+
+> **Note:** Digi-Lag is a deliberate VW firmware feature — the ECU stays in closed-loop lambda for a fixed time window at WOT to compensate for carbon canister scavenging pressure changes. On a boosted G60 this causes a lean spike (sometimes 16:1 AFR or worse). The Overview tab includes a one-click **Remove Digi-Lag** button with optional WOT Initial Enrichment compensation.
 
 ## Formula Reference
 
@@ -139,3 +142,11 @@ Included: G60 PG stock, G60 16v Limited, G40 Mk3 stock, G40 Mk2 stock.
 
 - [PoloG40Digifant Wiki](https://github.com/YOU54F/PoloG40Digifant/wiki) by Yousaf Nabi — Binary decompilation, map locations, XDF files
 - [audi90-teensy-ecu](https://github.com/dspl1236/audi90-teensy-ecu) — Related Teensy EPROM emulator project
+- [the-corrado.net thread #690](https://www.the-corrado.net/showthread.php?690) — Community Digi-Lag documentation
+- [gummel.net](https://gummel.net) — G60 tuning reference
+
+## Development
+
+DigiTool was built by [@dspl1236](https://github.com/dspl1236) with the assistance of [Claude](https://claude.ai) (Anthropic). The reverse engineering, ROM analysis, patch address discovery, and tuning knowledge are the result of collaboration between the developer and Claude across many sessions — analysing real ROM files, cross-referencing community resources, and building the tool iteratively.
+
+If you find it useful, contributions and ROM donations (especially Euro G60 variants, BBM tunes, or 250 kPa sensor ROMs) are welcome.
