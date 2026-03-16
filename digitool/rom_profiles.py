@@ -221,7 +221,7 @@ G60_SINGLE_MAPS: List[MapDef] = [
     MapDef("Accel Enrich Adder ECT",0x4386, 17,  1),
     MapDef("Hot Start Enrichment",  0x43C9, 17,  1),
     MapDef("OXS Upswing",           0x441A, 16,  4),
-    MapDef("OXS Downswing",         0x445A, 16,  4),
+    MapDef("OXS Downswing",         0x445A, 16,  1),  # 16 bytes: ends at 0x446A
     MapDef("Startup ISV vs ECT",    0x446A, 17,  1),
     MapDef("Idle Ignition",         0x447B, 16,  1),
     MapDef("Boost Cut (No Knock)",  0x450F, 17,  1),
