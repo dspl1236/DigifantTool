@@ -7,8 +7,7 @@ Includes TipPanel on the right side.
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame
 )
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QFont, QColor
+from PyQt5.QtGui import QFont
 
 from digitool.rom_profiles import MapDef
 from digitool.ui.map_table import MapTable

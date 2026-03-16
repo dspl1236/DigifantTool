@@ -5,10 +5,9 @@ Full hex dump view with region highlight labels.
 
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPlainTextEdit,
-    QLabel, QScrollBar, QSizePolicy, QPushButton
+    QLabel
 )
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QFont, QTextCharFormat, QColor, QTextCursor
+from PyQt5.QtGui import QFont
 
 from digitool.rom_profiles import DetectionResult
 

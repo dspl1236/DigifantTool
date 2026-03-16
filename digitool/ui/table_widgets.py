@@ -7,7 +7,7 @@ Each tab has a TipPanel sidebar; clicking a table's title label updates the tip.
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QScrollArea,
     QLabel, QTableWidget, QTableWidgetItem,
-    QHeaderView, QFrame, QSizePolicy
+    QHeaderView, QFrame
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont, QColor, QBrush

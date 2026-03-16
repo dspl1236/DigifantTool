@@ -4,9 +4,9 @@ ROM diff tool — compare two .BIN files byte-by-byte, grouped by map region.
 """
 
 from PyQt5.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
+    QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QTableWidget, QTableWidgetItem,
-    QHeaderView, QFileDialog, QSplitter, QFrame
+    QHeaderView, QFileDialog
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor, QBrush, QFont

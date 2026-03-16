@@ -111,7 +111,6 @@ class LiveValues:
 
         # O2S voltage from group 0 cell 5 if available
         # (only present when mock sends full group 0, not group 1)
-        o2s_raw = None
         group0_raw = groups.get("0", groups.get(0, {}))
         if isinstance(group0_raw, dict):
             cells0 = {c["index"]: c for c in group0_raw.get("cells", [])}
@@ -243,7 +242,17 @@ if _QT_AVAILABLE and _KWP_AVAILABLE:
             self._matched = new_match
 
 else:
+    class _NoOpSignal:
+        def connect(self, *a, **kw):    pass
+        def disconnect(self, *a, **kw): pass
+        def emit(self, *a, **kw):       pass
+
     class KWPMonitor:   # type: ignore
+        connected    = _NoOpSignal()
+        disconnected = _NoOpSignal()
+        live_data    = _NoOpSignal()
+        mismatch     = _NoOpSignal()
+
         def __init__(self, parent=None): pass
         def set_rom_part_number(self, pn): pass
         def stop(self): pass

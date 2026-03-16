@@ -5,15 +5,15 @@ ROM overview — variant, type, rev limit, code flags, checksum status.
 
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
-    QLabel, QPushButton, QFileDialog, QSizePolicy, QFrame,
-    QSpinBox, QMessageBox
+    QLabel, QPushButton,
+    QSpinBox,
 )
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QFont
 
 from digitool.rom_profiles import (
-    DetectionResult, VARIANT_LABELS,
-    CODE_PATCHES_G60, VARIANT_PATCHES, FAMILY_PATCHES, MAP_FAMILY_MK2,
+    DetectionResult,
+    CODE_PATCHES_G60, VARIANT_PATCHES, FAMILY_PATCHES,
     compute_checksum, KNOWN_CRCS, rpm_to_rev_limit, detect_map_sensor
 )
 
