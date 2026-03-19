@@ -357,3 +357,251 @@ class TestDigi1Regression:
         rom[0x7FFE] = 0x4C; rom[0x7FFF] = 0x14
         result = detect_rom_family(bytes(rom))
         assert result is None
+
+
+# ── Part-number scanner ───────────────────────────────────────────────────────
+
+class TestPartNumberScanner:
+    """Tests for _scan_part_numbers and _classify_df2_variant."""
+
+    def _get_helpers(self):
+        from digitool.rom_profiles import _scan_part_numbers, _classify_df2_variant
+        return _scan_part_numbers, _classify_df2_variant
+
+    def _rom_with_string(self, s: str) -> bytes:
+        rom = bytearray([0x41] * 0x8000)
+        # Embed string in the fill area at 0x0100
+        for i, c in enumerate(s.encode('ascii')):
+            rom[0x0100 + i] = c
+        return bytes(rom)
+
+    def test_2e_suffix_b_detected(self):
+        scan, _ = self._get_helpers()
+        rom = self._rom_with_string("037906023B")
+        hits = scan(rom)
+        assert hits["df2_2e"] is not None
+        assert hits["df2_pf"] is None
+        assert hits["df3_aba"] is None
+
+    def test_2e_suffix_c_detected(self):
+        scan, _ = self._get_helpers()
+        rom = self._rom_with_string("037906023C")
+        hits = scan(rom)
+        assert hits["df2_2e"] is not None
+
+    def test_2e_suffix_d_detected(self):
+        scan, _ = self._get_helpers()
+        rom = self._rom_with_string("037906023D")
+        hits = scan(rom)
+        assert hits["df2_2e"] is not None
+
+    def test_2e_suffix_e_detected(self):
+        scan, _ = self._get_helpers()
+        rom = self._rom_with_string("037906023E")
+        hits = scan(rom)
+        assert hits["df2_2e"] is not None
+
+    def test_bosch_2e_detected(self):
+        scan, _ = self._get_helpers()
+        rom = self._rom_with_string("0261200263")
+        hits = scan(rom)
+        assert hits["df2_2e"] is not None
+
+    def test_pf_suffix_a_detected(self):
+        scan, _ = self._get_helpers()
+        rom = self._rom_with_string("037906023A")
+        hits = scan(rom)
+        assert hits["df2_pf"] is not None
+        assert hits["df2_2e"] is None
+
+    def test_bosch_pf_detected(self):
+        scan, _ = self._get_helpers()
+        rom = self._rom_with_string("0261200169")
+        hits = scan(rom)
+        assert hits["df2_pf"] is not None
+
+    def test_df3_aba_1h_detected(self):
+        scan, _ = self._get_helpers()
+        rom = self._rom_with_string("1H0906025A")
+        hits = scan(rom)
+        assert hits["df3_aba"] is not None
+        assert hits["df2_2e"] is None
+        assert hits["df2_pf"] is None
+
+    def test_no_pn_all_none(self):
+        scan, _ = self._get_helpers()
+        rom = bytearray([0x41] * 0x8000)
+        hits = scan(bytes(rom))
+        assert hits["df3_aba"] is None
+        assert hits["df2_2e"] is None
+        assert hits["df2_pf"] is None
+
+    def test_scan_case_insensitive(self):
+        """Embedded string in lowercase should still hit (scan upper-cases internally)."""
+        scan, _ = self._get_helpers()
+        rom = self._rom_with_string("037906023b")  # lowercase suffix
+        hits = scan(rom)
+        assert hits["df2_2e"] is not None
+
+    def test_scan_with_spaces_in_rom(self):
+        """Part numbers with spaces in ROM (e.g. "037 906 023 B") should match."""
+        scan, _ = self._get_helpers()
+        rom = self._rom_with_string("037 906 023 B")
+        hits = scan(rom)
+        assert hits["df2_2e"] is not None
+
+    def test_classify_2e_wins(self):
+        _, classify = self._get_helpers()
+        hits = {"df2_2e": "037906023B", "df2_pf": None, "df2_generic": None}
+        variant, label, method = classify(hits)
+        assert variant == VARIANT_DF2_2E
+        assert "2E" in label
+        assert "037906023B" in method
+
+    def test_classify_pf_wins(self):
+        _, classify = self._get_helpers()
+        hits = {"df2_2e": None, "df2_pf": "037906023A", "df2_generic": None}
+        variant, label, method = classify(hits)
+        assert variant == VARIANT_DF2_PF
+        assert "PF" in label
+
+    def test_classify_generic_defaults_to_pf(self):
+        _, classify = self._get_helpers()
+        hits = {"df2_2e": None, "df2_pf": None, "df2_generic": "037906023"}
+        variant, label, method = classify(hits)
+        assert variant == VARIANT_DF2_PF  # generic 037 → PF assumption
+
+    def test_classify_no_pn_defaults_to_2e(self):
+        _, classify = self._get_helpers()
+        hits = {"df2_2e": None, "df2_pf": None, "df2_generic": None}
+        variant, label, method = classify(hits)
+        assert variant == VARIANT_DF2_2E  # most common variant default
+
+    def test_2e_takes_priority_over_generic(self):
+        """If both 2E-specific and generic hits present, 2E wins."""
+        _, classify = self._get_helpers()
+        hits = {"df2_2e": "037906023C", "df2_pf": None, "df2_generic": "037906023"}
+        variant, label, method = classify(hits)
+        assert variant == VARIANT_DF2_2E
+
+
+# ── Enhanced detection: confidence levels ────────────────────────────────────
+
+class TestDetectionConfidence:
+    """Verify confidence is HIGH when PN found, MEDIUM when structural only."""
+
+    def _make_df2_rom_with_pn(self, pn: str) -> bytes:
+        rom = bytearray([0x41] * 0x8000)
+        rom[0x7FFE] = 0xAA; rom[0x7FFF] = 0xBB
+        for i, c in enumerate(pn.encode('ascii')):
+            rom[0x0200 + i] = c
+        return bytes(rom)
+
+    def test_df2_2e_pn_found_is_high_confidence(self):
+        rom = self._make_df2_rom_with_pn("037906023B")
+        result = detect_rom_family(rom)
+        assert result is not None
+        assert result.variant == VARIANT_DF2_2E
+        assert result.confidence == "HIGH"
+
+    def test_df2_pf_pn_found_is_high_confidence(self):
+        rom = self._make_df2_rom_with_pn("037906023A")
+        result = detect_rom_family(rom)
+        assert result is not None
+        assert result.variant == VARIANT_DF2_PF
+        assert result.confidence == "HIGH"
+
+    def test_df2_no_pn_is_medium_confidence(self):
+        """No part number in ROM → MEDIUM confidence, default 2E."""
+        rom = bytearray([0x41] * 0x8000)
+        rom[0x7FFE] = 0xAA; rom[0x7FFF] = 0xBB
+        result = detect_rom_family(bytes(rom))
+        assert result is not None
+        assert result.confidence == "MEDIUM"
+
+    def test_df3_aba_1h_pn_is_high_confidence(self):
+        rom = bytearray([0x41] * 0x8000)
+        rom[0x7FFE] = 0xCC; rom[0x7FFF] = 0xDD
+        for i, c in enumerate(b"1H0906025B"):
+            rom[0x0300 + i] = c
+        result = detect_rom_family(bytes(rom))
+        assert result is not None
+        assert result.variant == VARIANT_DF3_ABA
+        assert result.confidence == "HIGH"
+
+    def test_df3_abf_pn_found_is_high_confidence(self):
+        """ABF 8051 ROM with a 1H part number in fill → HIGH confidence."""
+        rom = bytearray([0x02] * 0x8000)
+        rom[0] = 0x02; rom[1] = 0x14; rom[2] = 0x97
+        for i, c in enumerate(b"1H0906025A"):
+            rom[0x0400 + i] = c
+        result = detect_rom_family(bytes(rom))
+        assert result is not None
+        assert result.variant == VARIANT_DF3_ABF
+        assert result.confidence == "HIGH"
+
+    def test_df3_abf_no_pn_is_medium_confidence(self):
+        rom = bytearray([0x02] * 0x8000)
+        rom[0] = 0x02; rom[1] = 0x14; rom[2] = 0x97
+        result = detect_rom_family(bytes(rom))
+        assert result is not None
+        assert result.variant == VARIANT_DF3_ABF
+        assert result.confidence == "MEDIUM"
+
+    def test_df2_warning_mentions_no_immo(self):
+        """DF2 warning should note no immobilizer (direct swap compatible)."""
+        rom = bytearray([0x41] * 0x8000)
+        rom[0x7FFE] = 0xAA; rom[0x7FFF] = 0xBB
+        result = detect_rom_family(bytes(rom))
+        assert result is not None
+        immo_note = any("immo" in w.lower() or "immobilizer" in w.lower()
+                        for w in result.warnings)
+        assert immo_note
+
+    def test_df3_aba_warning_mentions_immo(self):
+        """DF3 ABA warning must mention immobilizer."""
+        rom = bytearray([0x41] * 0x8000)
+        rom[0x7FFE] = 0xCC; rom[0x7FFF] = 0xDD
+        for i, c in enumerate(b"1H0906025"):
+            rom[0x0300 + i] = c
+        result = detect_rom_family(bytes(rom))
+        assert result is not None
+        immo_warned = any("immo" in w.lower() for w in result.warnings)
+        assert immo_warned
+
+
+# ── DF2 2E / PF variant label content ────────────────────────────────────────
+
+class TestDF2VariantLabels:
+    """Verify the label string in DetectionResult reflects engine variant."""
+
+    def _rom(self, pn: str) -> bytes:
+        rom = bytearray([0x41] * 0x8000)
+        rom[0x7FFE] = 0xAA; rom[0x7FFF] = 0xBB
+        for i, c in enumerate(pn.encode('ascii')):
+            rom[0x0100 + i] = c
+        return bytes(rom)
+
+    def test_2e_label_contains_2e(self):
+        result = detect_rom_family(self._rom("037906023C"))
+        assert result is not None
+        assert "2E" in result.label or "2.0" in result.label
+
+    def test_pf_label_contains_pf(self):
+        result = detect_rom_family(self._rom("037906023A"))
+        assert result is not None
+        assert "PF" in result.label or "1.8" in result.label
+
+    def test_2e_and_pf_are_different_variants(self):
+        r2e = detect_rom_family(self._rom("037906023C"))
+        rpf = detect_rom_family(self._rom("037906023A"))
+        assert r2e is not None and rpf is not None
+        assert r2e.variant != rpf.variant
+
+    def test_both_df2_use_same_family(self):
+        """Both 2E and PF use MAP_FAMILY_DF2 — same map layout."""
+        r2e = detect_rom_family(self._rom("037906023C"))
+        rpf = detect_rom_family(self._rom("037906023A"))
+        assert r2e is not None and rpf is not None
+        assert r2e.family == MAP_FAMILY_DF2
+        assert rpf.family == MAP_FAMILY_DF2

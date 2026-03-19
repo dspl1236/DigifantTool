@@ -308,6 +308,135 @@ How to find the patch address (for ABF, 8051 CPU):
 
 ---
 
+# Digifant 3 ABF — Ghidra Binary RE Workflow
+
+> This section describes how to locate the immobilizer bypass address in an ABF
+> ROM using Ghidra. Follow this when a ROM arrives. Record results in `immo_patches.py`.
+
+## Prerequisites
+
+| Tool | Version | Notes |
+|------|---------|-------|
+| Ghidra | 11.x | Download from ghidra-sre.org |
+| 8051 plugin | Built-in | Included in base Ghidra install |
+| ROM binary | 32KB | Upper half if 64KB chip read |
+
+Ghidra's 8051 processor module covers the Siemens SAB80C535 (Intel MCS-51 compatible).
+All standard 8051 opcodes apply. Siemens extensions (if any) are in the data sheet.
+
+## Import Settings
+
+```
+File → Import File → <ROM.BIN>
+Language:     8051 / 8051 (MCS-51 compatible)
+Endianness:   Big-endian
+Address space: CODE, base 0x0000
+```
+
+Click OK → Open CodeBrowser → Analysis → Auto Analyze → accept defaults.
+
+## Following the Reset Vector
+
+The 8051 reset vector is always at address **0x0000**. After auto-analysis:
+
+1. Navigate to **0x0000** in the Listing view (`G` → `0x0000`)
+2. You will see an `LJMP` instruction pointing to the startup routine address
+3. Double-click the target address to follow
+
+The startup routine typically:
+- Initialises the stack pointer (`MOV SP, #imm`)
+- Clears internal RAM (loop with `MOV @R0, A`)
+- Calls hardware init subroutines
+- Enters the main injection loop
+
+## Locating the Immo Check
+
+The immobilizer check is a **short subroutine** (≤ 50 instructions) that:
+
+1. Reads an external input pin state into accumulator A:
+   ```
+   MOV  A, P1      ; or P3 depending on ECU board routing
+   ANL  A, #mask   ; isolate the immo signal bit
+   ```
+2. Sets or tests an internal RAM flag byte (address in 0x20–0x7F range)
+3. Returns — the calling code then branches based on the flag
+
+**Search strategy:**
+
+In the Decompiler or Listing view, look for references to `P1` or `P3` port registers
+near the start of the main injection loop (the function called every crank event).
+The 8051 Special Function Registers for ports are:
+- `P0` = SFR 0x80
+- `P1` = SFR 0x90
+- `P2` = SFR 0xA0
+- `P3` = SFR 0xB0
+
+Use `Search → For Direct References` to find all reads of these SFRs.
+Narrow to reads inside the startup / init call tree.
+
+## Identifying the Bypass Target
+
+After the subroutine call that reads the immo pin, look for:
+
+| Opcode | Mnemonic | Meaning | Action |
+|--------|----------|---------|--------|
+| `0x60` | `JZ rel` | Jump if A==0 | Jumps when immo signal absent |
+| `0x70` | `JNZ rel` | Jump if A≠0 | Jumps when immo signal present |
+
+One of these branches to a **no-injection path** — typically an infinite loop or
+a return that skips the injector output. That conditional jump is the bypass target.
+
+```
+; Example pattern (addresses illustrative):
+0x1050:  LCALL 0x0800    ; call immo check subroutine
+0x1053:  JNZ   0x1A00    ; if immo_flag set → kill injection   <-- TARGET
+0x1055:  LJMP  0x1060    ; continue normal injection loop
+```
+
+The **2-byte patch** is at `0x1053`: replace `0x70 0xAD` with `0x00 0x00` (NOP NOP).
+
+## Verification Steps
+
+Before recording the address:
+
+1. Confirm the bytes at that address in the ROM hex view (`Ctrl+Shift+G` → address)
+2. Confirm the branch target is a dead-end / no-injection path (not a real routine)
+3. Bench test: apply patch, program ROM, crank engine with immo disconnected
+   - Engine should start cleanly
+   - Engine should also start with immo wired (NOP makes check irrelevant)
+
+## Recording the Result
+
+Update `PATCH_DB` in `digitool/immo_patches.py`:
+
+```python
+ImmoPatch(
+    ecu_pn      = "1H0906025A (ABF)",
+    rom_crc     = 0xXXXXXXXX,    # CRC32 of the confirmed ROM
+    patch_addr  = 0x1053,         # confirmed address
+    original    = bytes([0x70, 0xAD]),   # JNZ + offset from ROM
+    patched     = bytes([0x00, 0x00]),   # NOP NOP (8051)
+    description = "ABF immo bypass — JNZ → NOP×2",
+    confidence  = "CONFIRMED",
+    notes       = "Verified on bench MY1992 Golf 3 ABF ECU, 2025-01-xx",
+),
+```
+
+Then bump `confidence` to `"CONFIRMED"` and the DigiTool Immo tab Apply button will unlock.
+
+## ABA / ADY Notes (HD6303 CPU)
+
+If ABA turns out to be HD6303 (same CPU as Digi 1/2):
+
+- Use Ghidra's **Motorola 6800** processor (6303 is compatible with 6800 opcodes)
+- Reset vector is at **0x7FFE–0x7FFF** (big-endian, like Digi 1)
+- NOP opcode = `0x01` (not `0x00` like 8051)
+- Conditional branches: `BEQ` = `0x27`, `BNE` = `0x26`
+- Pattern search: look for `BEQ` or `BNE` after a `BSR` (branch to subroutine)
+  that reads an input port address
+
+---
+
 # ECU Hardware Reference (from xjamiex A2Resource + VW training material)
 
 ## Digifant Naming — Important Distinction

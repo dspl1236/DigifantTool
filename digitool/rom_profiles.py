@@ -1100,6 +1100,128 @@ FAMILY_PATCHES[MAP_FAMILY_DF3_ABA] = CODE_PATCHES_DF3_ABA
 # The main detect_rom() function above handles Digi 1.
 # These helpers extend detection for DF2 and DF3 without modifying detect_rom().
 
+
+# ---------------------------------------------------------------------------
+# Part-number scanner (used by detect_rom_family)
+# ---------------------------------------------------------------------------
+#
+# Known part-number patterns — used to discriminate DF2 vs DF3 ABA and
+# to distinguish the 2E from PF/RV engine variants within DF2.
+#
+# Key discriminators:
+#   "1H"   prefix  →  Golf 3 part number  →  DF3 ABA
+#   "037"  prefix  →  Golf 2 / Polo era   →  DF2
+#
+# DF2 engine disambiguation by ECU part-number suffix:
+#   037906023B / C / D / E   →  2E (2.0 8v)    Bosch 0261200262/263/264
+#   037906023  / A            →  PF/RV (1.8 8v) Bosch 0261200169/170
+#
+# Bosch ECU numbers embedded in some ROM ID strings:
+#   "0261200262" / "263" / "264"  →  2E
+#   "0261200169" / "170"          →  PF
+#
+# Scan is across the entire 32KB ROM (not just 0x7F00) because the
+# identification string may be in any fill region depending on firmware rev.
+
+# DF3 ABA signals — Golf 3 "1H" platform part-number prefix
+_DF3_ABA_PN_SIGNALS: List[str] = [
+    "1H0906025",  # base ABF part number
+    "1H0906025A", "1H0906025B", "1H0906025C",
+    "1H0906023",  # ABA/ADY variant
+]
+
+# DF2 2E signals — Golf 2 "037" + B/C/D/E suffix, or Bosch 026120026x
+_DF2_2E_PN_SIGNALS: List[str] = [
+    "037906023B", "037906023C", "037906023D", "037906023E",
+    "0261200262", "0261200263", "0261200264",
+]
+
+# DF2 PF signals — Golf 2 "037" + no suffix or A suffix, or Bosch 026120016x
+_DF2_PF_PN_SIGNALS: List[str] = [
+    "037906023A",
+    "0261200169", "0261200170",
+]
+
+# Generic DF2 indicator (no engine discrimination possible)
+_DF2_GENERIC_PN_SIGNALS: List[str] = [
+    "037906023",  # base (no suffix) — ambiguous, weakly PF
+]
+
+
+def _scan_part_numbers(data: bytes) -> Dict[str, Optional[str]]:
+    """
+    Scan the full 32KB ROM for embedded ASCII identification strings
+    containing known part-number patterns.
+
+    Returns a dict:
+      {
+        "df3_aba":  matched_string_or_None,
+        "df2_2e":   matched_string_or_None,
+        "df2_pf":   matched_string_or_None,
+        "df2_generic": matched_string_or_None,
+      }
+
+    Matching is case-insensitive and ignores spaces / hyphens between characters
+    so "037 906 023 B" and "037906023B" both match.
+    """
+    # Extract all printable runs ≥ 6 chars from ROM (fill areas, ID strings)
+    runs: List[str] = []
+    run: List[str] = []
+    for b in data:
+        if 0x20 <= b <= 0x7E:
+            run.append(chr(b))
+        else:
+            if len(run) >= 6:
+                runs.append(''.join(run).replace(' ', '').replace('-', '').upper())
+            run = []
+    if len(run) >= 6:
+        runs.append(''.join(run).replace(' ', '').replace('-', '').upper())
+
+    combined = ' '.join(runs)  # space-joined so we can search across run boundaries
+
+    def _hit(signals: List[str]) -> Optional[str]:
+        for sig in signals:
+            if sig.upper() in combined:
+                return sig
+        return None
+
+    return {
+        "df3_aba":     _hit(_DF3_ABA_PN_SIGNALS),
+        "df2_2e":      _hit(_DF2_2E_PN_SIGNALS),
+        "df2_pf":      _hit(_DF2_PF_PN_SIGNALS),
+        "df2_generic": _hit(_DF2_GENERIC_PN_SIGNALS),
+    }
+
+
+def _classify_df2_variant(pn_hits: Dict[str, Optional[str]]) -> tuple[str, str, str]:
+    """
+    Given part-number scan hits, return (variant, label_suffix, method_detail)
+    for a DF2 ROM.
+
+    Priority:
+      2E  signals  →  VARIANT_DF2_2E  (high confidence)
+      PF  signals  →  VARIANT_DF2_PF  (high confidence)
+      generic 037  →  VARIANT_DF2_PF  (weakly — PF used the base number)
+      nothing      →  VARIANT_DF2_2E  (default — 2E was more common)
+    """
+    if pn_hits["df2_2e"]:
+        return (VARIANT_DF2_2E,
+                f"2E 2.0 8v (PN: {pn_hits['df2_2e']})",
+                f"part-number hit {pn_hits['df2_2e']!r}")
+    if pn_hits["df2_pf"]:
+        return (VARIANT_DF2_PF,
+                f"PF/RV 1.8 8v (PN: {pn_hits['df2_pf']})",
+                f"part-number hit {pn_hits['df2_pf']!r}")
+    if pn_hits["df2_generic"]:
+        return (VARIANT_DF2_PF,
+                "PF/RV 1.8 8v (generic 037906023 — assumed PF)",
+                "generic PN, no suffix — defaulting to PF/RV")
+    # No part number found — fall back to 2E as the more common variant
+    return (VARIANT_DF2_2E,
+            "2E 2.0 8v (no PN found — default)",
+            "no part-number string found, defaulting to 2E")
+
+
 def detect_rom_family(rom_data: bytes) -> Optional['DetectionResult']:
     """
     Extended detection covering Digifant 2 and 3 in addition to Digi 1.
@@ -1107,85 +1229,124 @@ def detect_rom_family(rom_data: bytes) -> Optional['DetectionResult']:
     Returns DetectionResult if DF2 or DF3 is suspected, else None.
     Caller should try this FIRST; if None, fall back to detect_rom() for Digi 1.
 
-    Detection logic:
-      DF3 ABF (8051): rom[0] == 0x02 (LJMP) AND reset target in 0x0400-0x2000
-                      AND rom is NOT an HD6303 ROM (no 0x41 fill signature).
-      DF3 ABA:        HD6303 reset vector, but different rev_addr from known Digi1 vectors.
-      DF2:            HD6303 reset vector not in Digi 1 RESET_VECTORS dict.
+    Detection pipeline:
+      1. DF3 ABF / 9A (8051 CPU):
+            rom[0] == 0x02 (LJMP opcode)
+            AND reset target in 0x0400–0x2000
+            AND no 0x41 fill (rules out HD6303 ROMs)
+      2. DF3 ABA (HD6303, Golf 3 immo):
+            unknown HD6303 reset vector (not in Digi 1 RESET_VECTORS)
+            AND 0x41 fill present
+            AND full-ROM part-number scan finds "1H" Golf-3 prefix
+      3. DF2 2E / PF (HD6303, Golf 2 no immo):
+            unknown HD6303 reset vector
+            AND 0x41 fill present
+            AND NOT DF3 ABA signals
+            Engine subvariant (2E vs PF) resolved by part-number scan:
+              037906023B/C/D/E or Bosch 0261200262/263/264 → 2E
+              037906023A or Bosch 0261200169/170           → PF
+              no part number found                         → default 2E
 
-    STATUS: This is a skeleton. Full scoring will be calibrated once ROMs arrive.
+    Confidence:
+      HIGH   — part-number string found confirming variant
+      MEDIUM — structural heuristic only (fill + vector), no PN string
     """
     if len(rom_data) < 0x8000:
         rom_data = rom_data + bytes(0x8000 - len(rom_data))
     data = rom_data[:0x8000]
 
     crc = zlib.crc32(data) & 0xFFFFFFFF
-    sensor_kpa, sensor_method = detect_map_sensor(data)
+    sensor_kpa, _sensor_method = detect_map_sensor(data)
 
-    # ── DF3 ABF / 9A detection (8051 CPU) ────────────────────────────────────
-    # 8051 ROMs: byte 0 = 0x02 (LJMP), bytes 1-2 = target address big-endian
-    # HD6303 ROMs: 0x41 fill in lower 16KB, vector at 0x7FFE
     fill_lo = sum(1 for b in data[:0x4000] if b == 0x41) / 0x4000
+
+    # ── 1. DF3 ABF / 9A — 8051 CPU ───────────────────────────────────────────
+    # Signature: LJMP opcode (0x02) at ROM byte 0, target in typical DF3 range,
+    # no 0x41 fill (8051 code layout is completely different from HD6303).
     if data[0] == 0x02 and fill_lo < 0.05:
         reset_target = (data[1] << 8) | data[2]
         if 0x0400 <= reset_target <= 0x2000:
+            # Check whether it might be a 9A (Corrado) vs ABF (Golf 3 GTI)
+            # by scanning for 9A-specific part numbers — both are Siemens 5WP4
+            # so we default to ABF as the more common swap candidate.
+            pn_hits = _scan_part_numbers(data)
+            pn_note = ""
+            variant = VARIANT_DF3_ABF
+            if pn_hits.get("df3_aba"):
+                pn_note = f" PN: {pn_hits['df3_aba']}"
+
             return DetectionResult(
-                variant=VARIANT_DF3_ABF,
+                variant=variant,
                 family=MAP_FAMILY_DF3_ABF,
-                label=VARIANT_LABELS[VARIANT_DF3_ABF],
-                confidence="MEDIUM",
-                method=f"DF3 ABF heuristic: 8051 LJMP reset → 0x{reset_target:04X}",
+                label=VARIANT_LABELS[variant],
+                confidence="HIGH" if pn_note else "MEDIUM",
+                method=(
+                    f"DF3 ABF heuristic: 8051 LJMP reset → 0x{reset_target:04X}"
+                    + pn_note
+                ),
                 cal="UNKNOWN",
                 rev_addr=None,
                 crc32=crc,
                 warnings=[
                     "Digifant 3 ABF (8051 CPU) detected by heuristic.",
                     "Map addresses UNCONFIRMED — submit ROM to confirm.",
-                    "Immobilizer present — see Hardware tab for bypass patch.",
+                    "Immobilizer present — see Immo tab for bypass patch workflow.",
                 ],
                 map_sensor_kpa=sensor_kpa,
             )
 
-    # ── DF2 / DF3 ABA detection (HD6303 CPU, unknown reset vector) ───────────
-    # Reset vector at 0x7FFE-0x7FFF, not in Digi 1 RESET_VECTORS table
+    # ── 2 & 3. HD6303 fill + unknown reset vector → DF2 or DF3 ABA ──────────
     vec_bytes = data[0x7FFE:0x8000]
     vec_str   = f"{vec_bytes[0]:02X}{vec_bytes[1]:02X}"
 
     if vec_str not in RESET_VECTORS and fill_lo > 0.30:
-        # Has Digifant fill signature but unknown reset vector — likely DF2 or DF3 ABA
-        # Distinguish by rev_addr heuristic: DF2 and DF3 ABA rev limits
-        # are in a different range than Digi 1's 0x4BF2/0x4456/0x5BC2
-        def _plausible_rev(addr: int) -> bool:
-            if addr + 2 > len(data): return False
-            raw = (data[addr] << 8) | data[addr + 1]
-            if raw == 0: return False
-            return 4000 <= (30_000_000 // raw) <= 10000
+        # Scan full ROM for part-number strings to discriminate DF3 ABA vs DF2,
+        # and to resolve the DF2 engine subvariant.
+        pn_hits = _scan_part_numbers(data)
 
-        # DF3 ABA has immo — check for known part number at 0x7F00 area
-        id_chunk = ''.join(chr(b) if 32 <= b <= 126 else '' for b in data[0x7F00:0x7F30])
-        is_aba = any(pn in id_chunk.replace(' ', '') for pn in
-                     ['037906025', '037906023', '1H0906025'])
+        # ── 2. DF3 ABA — Golf 3 "1H" part number is the strong discriminator ─
+        if pn_hits["df3_aba"]:
+            return DetectionResult(
+                variant=VARIANT_DF3_ABA,
+                family=MAP_FAMILY_DF3_ABA,
+                label=VARIANT_LABELS[VARIANT_DF3_ABA],
+                confidence="HIGH",
+                method=(
+                    f"DF3 ABA: HD6303 fill={fill_lo:.0%}, vec {vec_str}, "
+                    f"PN {pn_hits['df3_aba']!r}"
+                ),
+                cal="UNKNOWN",
+                rev_addr=None,
+                crc32=crc,
+                warnings=[
+                    f"Digifant 3 ABA detected (part number {pn_hits['df3_aba']}).",
+                    "Map addresses UNCONFIRMED — submit ROM to confirm.",
+                    "Immobilizer likely present — see Immo tab for bypass patch workflow.",
+                ],
+                map_sensor_kpa=sensor_kpa,
+            )
 
-        variant  = VARIANT_DF3_ABA if is_aba else VARIANT_DF2_2E
-        family   = MAP_FAMILY_DF3_ABA if is_aba else MAP_FAMILY_DF2
-        warnings = [
-            f"Digifant {'3 ABA' if is_aba else '2'} heuristic: HD6303 fill detected, "
-            f"reset vector {vec_str} not in Digi 1 table.",
-            "Map addresses UNCONFIRMED — submit ROM to confirm.",
-        ]
-        if is_aba:
-            warnings.append("Immobilizer likely present — see Hardware tab for bypass patch.")
+        # ── 3. DF2 2E or PF — no Golf-3 PN found ────────────────────────────
+        df2_variant, label_suffix, pn_method = _classify_df2_variant(pn_hits)
+        confidence = "HIGH" if (pn_hits["df2_2e"] or pn_hits["df2_pf"]) else "MEDIUM"
 
         return DetectionResult(
-            variant=variant,
-            family=family,
-            label=VARIANT_LABELS.get(variant, variant),
-            confidence="MEDIUM",
-            method=f"DF2/DF3-ABA heuristic: 0x41 fill={fill_lo:.0%}, vec {vec_str}",
+            variant=df2_variant,
+            family=MAP_FAMILY_DF2,
+            label=f"Digifant 2 — {label_suffix}",
+            confidence=confidence,
+            method=(
+                f"DF2 heuristic: HD6303 fill={fill_lo:.0%}, vec {vec_str}, "
+                + pn_method
+            ),
             cal="UNKNOWN",
             rev_addr=None,
             crc32=crc,
-            warnings=warnings,
+            warnings=[
+                f"Digifant 2 ({label_suffix}) detected by heuristic.",
+                "Map addresses UNCONFIRMED — submit ROM to confirm.",
+                "No immobilizer — direct ROM swap compatible with DF2 ECU.",
+            ],
             map_sensor_kpa=sensor_kpa,
         )
 

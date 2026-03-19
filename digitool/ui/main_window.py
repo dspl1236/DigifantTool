@@ -37,6 +37,7 @@ from digitool.ui.temperature_tab import TemperatureTab
 from digitool.ui.lambda_tab      import LambdaTab
 from digitool.ui.hex_tab         import HexTab
 from digitool.ui.diff_tab        import DiffTab
+from digitool.ui.immo_tab        import ImmoTab
 
 
 class MainWindow(QMainWindow):
@@ -118,6 +119,7 @@ class MainWindow(QMainWindow):
         self.tab_lambda      = LambdaTab()
         self.tab_hex         = HexTab()
         self.tab_diff        = DiffTab()
+        self.tab_immo        = ImmoTab()
 
         self._corr_tabs = [
             self.tab_boost, self.tab_wot_accel, self.tab_knock,
@@ -140,6 +142,7 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.tab_lambda,      "Lambda / OXS")
         self.tabs.addTab(self.tab_hex,         "Hex View")
         self.tabs.addTab(self.tab_diff,        "Compare")
+        self.tabs.addTab(self.tab_immo,        "Immo")
 
         # Wire overview signals
         self.tab_overview.sig_open_rom.connect(self._open_rom)
@@ -147,6 +150,7 @@ class MainWindow(QMainWindow):
         self.tab_overview.sig_save_as.connect(self._save_as)
         self.tab_overview.sig_save_512.connect(self._save_27c512)
         self.tab_overview.sig_rom_mutated.connect(self._on_rom_mutated)
+        self.tab_immo.sig_rom_mutated.connect(self._on_rom_mutated)
 
         self.setAcceptDrops(True)
 
@@ -374,20 +378,6 @@ class MainWindow(QMainWindow):
         if result.warnings:
             QMessageBox.information(self, "ROM Detection", "\n".join(result.warnings))
 
-        # Notify if this is a DF3 immo variant
-        from digitool.rom_profiles import VARIANT_DF3_ABF, VARIANT_DF3_ABA, VARIANT_DF3_9A
-        _DF3_IMMO = {VARIANT_DF3_ABF, VARIANT_DF3_ABA, VARIANT_DF3_9A}
-        if result.variant in _DF3_IMMO:
-            patches = find_patches_for_ecu(result.variant)
-            confirmed = [p for p in patches if p.confidence == "CONFIRMED"]
-            if confirmed:
-                status = f"{len(confirmed)} confirmed bypass patch(es) available."
-            else:
-                status = "Immo bypass patches UNCONFIRMED — submit ROM to help confirm."
-            self.statusbar.showMessage(
-                f"⚠  Digifant 3 with immobilizer detected.  {status}", 10000
-            )
-
         # Rebuild dynamic map tabs
         self._rebuild_map_tabs(result, self._rom)
 
@@ -397,6 +387,7 @@ class MainWindow(QMainWindow):
             tab.load_rom(result, self._rom)
         self.tab_hex.load_rom(result, self._rom)
         self.tab_diff.set_rom_a(result, self._rom)
+        self.tab_immo.load_rom(result, self._rom)
 
         self.statusbar.showMessage(
             f"Loaded: {short}  |  {result.label}  |  {result.confidence} confidence"
