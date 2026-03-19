@@ -42,59 +42,59 @@ _PALETTE = {
 }
 
 _GHIDRA_WORKFLOW_ABF = """\
-Finding the ABF immo bypass address — Ghidra 8051 workflow
-===========================================================
+Finding the ABF immo bypass address — Ghidra HD6303 workflow
+=============================================================
+
+CPU CONFIRMED: HD6303 (Motorola 6800 derivative — same as Digi 1/2)
+Earlier docs referenced 8051 — that was wrong. Use Motorola 6800 processor.
 
 Prerequisites
-  • Ghidra 11.x with the 8051 processor plugin (included in base install)
-  • 32KB ROM binary (or upper half of 64KB chip read)
+  • Ghidra 11.x (ghidra-sre.org)
+  • Motorola 6800 processor plugin (built-in to Ghidra)
+  • 32KB ROM binary
+
+Import Settings
+  File → Import File → <ROM.BIN>
+  Language:     Motorola / 6800 / default / big-endian
+  Base address: 0x8000   ← CRITICAL (ROM mapped at CPU 0x8000–0xFFFF)
 
 Steps
 
-1. Import ROM
-   File → Import File → select .BIN
-   Language: 8051 / 8051 / default / little-endian
-   Click OK, then double-click to open in CodeBrowser.
-
-2. Let auto-analysis run
+1. Auto-analyze
    Analysis → Auto Analyze → accept defaults → Analyze.
-   The disassembler will follow LJMP from 0x0000 and trace the reset path.
 
-3. Find the startup/immo check subroutine
-   In the Listing view, navigate to address 0x0000.
-   You will see:   LJMP  0xXXXX   (the reset target)
-   Follow that jump. Look for a short subroutine (< 50 instructions) that:
-     a) Reads an external port bit (MOV A, P1 / MOV A, P3 / ORL A,...)
-     b) Calls or branches to a flag-setting routine
-     c) Ends by returning (RET) or jumping to the main loop
+2. Find the reset
+   Navigate to CPU 0xFFFE (G → FFFE).
+   Read 16-bit big-endian reset vector — e.g. 0x9200 for 037906024G.
+   Navigate to that address to begin tracing.
 
-4. Identify the conditional jump
-   Immediately after the immo-check call, look for:
-     JZ   offset   (opcode 0x60) — "jump if flag clear (immo not seen)"
-     JNZ  offset   (opcode 0x70) — "jump if flag set (immo seen)"
-   One of these branches to a no-injection path (e.g. SJMP to an infinite loop).
+3. Trace startup
+   Follow: stack init → RAM clear → hardware init → main loop.
+   Look for a short subroutine (< 50 instructions) that:
+     a) Reads from an external I/O address (LDAA ext)
+     b) Branches based on the result
 
-5. Record the address
-   Note the hex address of the JZ or JNZ instruction.
-   Note the 2 bytes at that address (opcode + offset).
+4. Identify the bypass target
+   After the immo check BSR/JSR, find:
+     BNE rel  (opcode 0x26) — branch if immo NOT seen → kills injection
+     BEQ rel  (opcode 0x27) — branch if immo seen → kills injection
+   Follow the branch to confirm it leads to a dead-end / no-injection path.
 
-6. Verify
-   In the ROM hex dump, confirm those exact 2 bytes at that offset.
+5. Patch
+   Replace the 2-byte conditional branch with NOP NOP.
+   HD6303 NOP = 0x01  (NOT 0x00 — that's the 8051 convention, wrong here).
+   Patch bytes: 0x01 0x01
+
+6. Record and update
+   Physical address = CPU address − 0x8000.
    Update PATCH_DB in immo_patches.py:
-     patch_addr = <your address>
-     original   = bytes([<opcode>, <offset>])
-     patched    = bytes([0x00, 0x00])   # NOP NOP (8051 NOP = 0x00)
+     patch_addr = <cpu_addr − 0x8000>
+     original   = bytes([0x26, <offset>])  # or 0x27 if BEQ
+     patched    = bytes([0x01, 0x01])      # NOP NOP (HD6303)
      confidence = "CONFIRMED"
 
-7. Apply via DigiTool Immo tab
-   Reload the ROM. Verify button will confirm bytes. Apply button will patch.
-   Save as new file. Bench-test on ECU before driving.
-
-Notes
-  • NOP in 8051 = 0x00 (one byte). The conditional jump is 2 bytes, so NOP×2.
-  • Never burn a patched ROM without bench verification first.
-  • ABA (HD6303 CPU): NOP = 0x01. Conditional branch = BEQ (0x27) or BNE (0x26).
-    For ABA use Ghidra's 6800/6303 processor instead of 8051.
+7. Bench test before driving.
+   The Apply button unlocks only when confidence == CONFIRMED.
 """
 
 _PLACEHOLDER_NO_IMMO = """\

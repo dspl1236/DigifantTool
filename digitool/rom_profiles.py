@@ -1293,17 +1293,20 @@ def detect_rom_family(rom_data: bytes) -> Optional['DetectionResult']:
     Caller should try this FIRST; if None, fall back to detect_rom() for Digi 1.
 
     Detection pipeline:
-      1. DF3 ABF / 9A (8051 CPU):
-            rom[0] == 0x02 (LJMP opcode)
-            AND reset target in 0x0400–0x2000
-            AND no 0x41 fill (rules out HD6303 ROMs)
+      0. CRC32 check against DF3_ABF_KNOWN_CRCS — highest confidence, checked first.
+      1. DF3 ABF / 9A (HD6303 CPU — confirmed from binary analysis of 037906024G):
+            'DIGIFANT 3' ASCII string anywhere in ROM (primary — HIGH confidence)
+            OR HD6303 reset vector pointing into CPU 0x8000+ range
+               AND low 0x41 fill < 10% (structural fallback — MEDIUM confidence)
+            NOTE: CPU is HD6303, NOT 8051. Earlier 8051 assumption was wrong.
+            ROM mapped at CPU 0x8000–0xFFFF. Physical = CPU − 0x8000.
       2. DF3 ABA (HD6303, Golf 3 immo):
             unknown HD6303 reset vector (not in Digi 1 RESET_VECTORS)
-            AND 0x41 fill present
-            AND full-ROM part-number scan finds "1H" Golf-3 prefix
+            AND 0x41 fill present (> 30%)
+            AND full-ROM part-number scan finds '1H' Golf-3 prefix
       3. DF2 2E / PF (HD6303, Golf 2 no immo):
             unknown HD6303 reset vector
-            AND 0x41 fill present
+            AND 0x41 fill present (> 30%)
             AND NOT DF3 ABA signals
             Engine subvariant (2E vs PF) resolved by part-number scan:
               037906023B/C/D/E or Bosch 0261200262/263/264 → 2E
@@ -1311,8 +1314,8 @@ def detect_rom_family(rom_data: bytes) -> Optional['DetectionResult']:
               no part number found                         → default 2E
 
     Confidence:
-      HIGH   — part-number string found confirming variant
-      MEDIUM — structural heuristic only (fill + vector), no PN string
+      HIGH   — CRC32 match, or 'DIGIFANT 3' string found, or PN string confirmed
+      MEDIUM — structural heuristic only (fill + vector), no confirming string
     """
     if len(rom_data) < 0x8000:
         rom_data = rom_data + bytes(0x8000 - len(rom_data))
