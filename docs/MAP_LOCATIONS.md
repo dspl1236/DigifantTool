@@ -162,6 +162,81 @@ Not 250kPa — fuel avg 159.8 is identical range to standard 200kPa G60.
 
 ---
 
+# Digifant System Architecture Notes
+*Source: VW Pro Training Manual Part 2 (Digifant I and II)*
+
+## ECU Architecture
+
+| Feature | Digifant I (California) | Digifant I (G60 label) | Digifant II |
+|---------|------------------------|----------------------|-------------|
+| Connector | 38-pin | 25-pin (DF II pinout) | 25-pin ECU + 7-pin ign ctrl |
+| Ignition stage | Integrated in ECU | External coil to pin 25 | Separate ignition control unit |
+| Lambda control | ECU-integrated | ECU-integrated | ECU-integrated |
+| EGR | Yes (CA only) | No | No |
+| Fault memory | Yes (CA only) | No | No |
+
+**Note:** The G60 (Corrado/Golf G60) uses the DF II 25-pin connector layout but is
+marketed as "Digifant I". It has a CO potentiometer instead of a MAF sensor and adds
+boost enrichment. It is NOT the California emissions Digifant I.
+
+## Ignition Map Structure — CONFIRMED (p.16 of manual)
+
+> *"stored in the ignition map in the control unit's memory as **256 single operational
+> points, 16 fixed points for each engine load point and 16 for each RPM point**"*
+
+This confirms: **16×16 = 256 cells** — same as DigiTool's existing implementation.
+X-axis: 16 RPM points. Y-axis: 16 load points (from airflow sensor potentiometer).
+
+## Base Timing Specification (p.54)
+
+For timing verification / calibration baseline on Digifant II:
+- ECT sensor **disconnected**
+- Engine speed: **2300 ±50 RPM**
+- Checking: **4°–8° BTDC**
+- Adjusting to: **6° ±1° BTDC**
+
+This is the reference point for ignition map calibration — with ECT disconnected the
+ECU uses a fixed timing value, bypassing coolant temp correction.
+
+## Fuel System Specs
+
+| Parameter | Value |
+|-----------|-------|
+| Fuel pressure (idle) | 2.5 bar |
+| Fuel pressure (load) | 3.0 bar |
+| Injection mode | Batch-fire (all injectors simultaneously) |
+| Decel fuel cut-off | 2200–2700 RPM (cuts), 1300–1800 RPM (restores) |
+| Over-rev fuel cut | 6500 RPM |
+| Full throttle enrichment | Activates ~10° before WOT (full throttle switch) |
+
+## Knock Sensor Behaviour
+
+- Per-cylinder retard: up to **15°** maximum retard per cylinder
+- Recovery: **3° advance steps** after knock clears
+- Test procedure: timing must advance **30° ±3°** at 2300 RPM with ECT disconnected
+  when knock sensor is stimulated (brief >3000 RPM blip stores knock info in ECU)
+- Torque: 15–26 Nm (11–18 ft-lbs)
+
+## ISV (Idle Stabilizer Valve)
+
+- Normal idle current: **~400 mA**
+- Operating range: **380–1000 mA**
+- Increases for: cold start, P/S at lock, A/T in gear, electrical loads, A/C on
+
+## OBD Fault Codes (California Digifant I Only)
+
+| Code | Component |
+|------|-----------|
+| 2112 | Knock sensor / wiring |
+| 2232 | Air flow sensor / wiring |
+| 2312 | Coolant temperature sensor / wiring |
+| 2322 | Intake air temperature sensor / wiring |
+| 2342 | Oxygen sensor / wiring |
+| 4444 | No faults stored |
+| 0000 | End of diagnosis sequence |
+
+---
+
 # Digifant 2 — Map Locations
 
 > **STATUS: UNCONFIRMED** — all addresses are placeholders estimated from community posts

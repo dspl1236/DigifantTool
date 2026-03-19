@@ -859,7 +859,10 @@ VARIANT_LABELS.update({
 
 DF2_MAPS: List[MapDef] = [
     MapDef("Ignition",              0x4004, 16, 16,
-           "°BTDC: (210-raw)/2.86. ADDRESSES UNCONFIRMED."),
+           "°BTDC: (210-raw)/2.86. "
+           "16×16 = 256 cells confirmed from VW Pro Training Manual p.16: "
+           "'16 fixed points for each engine load point and 16 for each RPM point'. "
+           "ADDRESS 0x4004 UNCONFIRMED — estimated from G60 similarity."),
     MapDef("Fuel",                  0x4104, 16, 16,
            "Raw fuel map. ADDRESSES UNCONFIRMED."),
     MapDef("RPM Scalar",            0x420C, 16,  1,
@@ -902,6 +905,12 @@ FAMILY_MAPS[MAP_FAMILY_DF2] = DF2_MAPS
 
 # ── Digifant 2 code patches ──────────────────────────────────────────────────
 # Digi 2 has the same digilag mechanism as Digi 1 — addresses TBD from ROM.
+# Base timing reference (from VW Pro Training Manual Part 2, p.54):
+#   With ECT sensor disconnected, at 2300 ±50 RPM:
+#   Check: 4°–8° BTDC. Adjust to: 6° ±1° BTDC.
+#   This is the anchor point for calibrating the ignition map decode formula.
+#   If real ROMs decode to ~6° BTDC at mid-map with this test condition,
+#   the (210-raw)/2.86 formula is confirmed correct for DF2.
 CODE_PATCHES_DF2 = {
     "digilag_lo":  dict(addr=0x0000, stock=b'\x01\x00', patch=b'\x00\x00',
                         label="Digilag (low RPM) — ADDR UNCONFIRMED"),
