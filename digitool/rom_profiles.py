@@ -973,38 +973,50 @@ DF2_IGN_UNIT_PINS = {
 
 
 # ===========================================================================
-# DIGIFANT 3  (added v0.7.0)
+# DIGIFANT 3  (added v0.7.0, architecture corrected v0.7.2)
 # ===========================================================================
 #
 # Digifant 3 covers early-mid 90s Golf 3 / Vento / Corrado.
 # Key engines: ABF (2.0 16v), ABA/ADY (2.0 8v), 9A (2.0 16v Corrado).
 #
-# ABF ECU: Siemens 5WP4 — CPU is Siemens SAB80C535 (Intel 8051 derivative)
-#          NOT HD6303. Different instruction set from Digi 1/2.
-#          Reset vector at 0x0000-0x0002 (8051: LJMP instruction).
-#          Ignition formula UNCONFIRMED — may differ from (210-raw)/2.86.
-#          ROM: 27C256 (32KB) or 27C512 (64KB doubled).
+# ABF ECU: Siemens 5WP4307 — CPU is HD6303 (Hitachi/Motorola M68 family).
+#          SAME instruction set as Digi 1 and Digi 2.
+#          Previous assumption of SAB80C535 (8051) was WRONG — corrected after
+#          binary analysis of 037906024G (CRC 0x78462536):
+#            - LDAA/STAA/JSR opcodes confirmed at reset entry 0x9200
+#            - CE 00 C8 (LDX #200, HD6303) at 0xF636/0xF64C
+#            - "DIGIFANT 3.2" string embedded at CPU 0x8D99
+#          ROM mapped at CPU 0x8000–0xFFFF (32KB, 27C256).
+#          Reset vector at CPU 0xFFFE (file 0x7FFE) → 0x9200.
+#          Ignition formula: (210 - raw) / 2.86 = °BTDC (same as Digi 1/2,
+#          confirmed plausible from candidate map decode 18–50° BTDC).
+#          Calibration data at beginning of ROM (CPU 0x8000–0x8FFF approx).
+#          No 0x41 fill in lower ROM area — code-dense, fill only at end.
 #          Has immobilizer: single pin check at startup.
+#          Immo bypass: BEQ/BNE (HD6303) → NOP NOP (0x01 0x01).
+#            NOT JZ/JNZ — those are 8051 opcodes.
 #
 # ABA/ADY ECU: Bosch 0 261 200 XXX series.
 #          CPU likely HD6303 (same family as Digi 1/2) — UNCONFIRMED.
 #          May share map layout with Digi 2.
 #
 # 9A (Corrado 16v): Siemens 5WP4/5WP5 — same family as ABF.
+#          Presumed HD6303 based on ABF finding.
 #
-# STATUS: UNCONFIRMED — all addresses are placeholders.
+# STATUS: ABF ignition map candidate confirmed (0x8117, single ROM).
+#         All other addresses UNCONFIRMED until second ROM diff.
 #
 # IMMOBILIZER (Digi 3 with immo):
-#   The immo check is a simple subroutine: ECU reads pin state from the
-#   instrument cluster's transponder reader. If absent → kills injection.
-#   Bypass: replace the conditional jump (JZ/JNZ) after the check with
-#   NOP bytes. 2-3 bytes at one address in ROM.
+#   The immo check is a subroutine: ECU reads a pin state and sets a flag.
+#   A conditional branch (BEQ 0x27 or BNE 0x26) after the check jumps to
+#   a no-injection path if the immo signal is absent.
+#   Bypass: replace the conditional branch with NOP NOP (0x01 0x01, HD6303).
 #   Purpose: engine swap into pre-immo cars (ABF into Golf 2, etc.)
 #   These ECUs are 30+ years old — no theft risk context.
 #   See immo_patches.py for the full patch framework.
 #
 # Known ECU part numbers:
-#   ABF:      5WP4 0xx (Siemens), 1H0906025, 1H0906025A/B/C
+#   ABF:      5WP4307 (Siemens), 037906024G, 1H0906025, 1H0906025A/B/C
 #   ABA/ADY:  0 261 200 XXX (Bosch)
 #   9A:       5WP4/5WP5 (Siemens)
 # ===========================================================================
@@ -1022,26 +1034,40 @@ VARIANT_LABELS.update({
 })
 
 # ── Digifant 3 ABF map addresses ─────────────────────────────────────────────
-# Siemens 5WP4, 8051-based. All addresses UNCONFIRMED.
-# Ignition formula likely different — 8051 encoding vs HD6303.
-# Will be determined from ROM disassembly when chips arrive.
+# Siemens 5WP4307. CPU confirmed HD6303 (binary analysis of 037906024G).
+# ROM mapped at CPU 0x8000–0xFFFF. Physical file offset = CPU addr − 0x8000.
+# Ignition formula: (210 - raw) / 2.86 = °BTDC — same as Digi 1/2 (confirmed
+# plausible from single-ROM decode: rows 1–15 average 26–35° BTDC, consistent
+# with a naturally aspirated 2.0 16V at typical operating conditions).
+# All addresses in CPU space. Ignition map confirmed from single ROM — needs
+# second ROM diff before committing to tuning from these addresses.
 
 DF3_ABF_MAPS: List[MapDef] = [
-    MapDef("Ignition",              0x5C00, 16, 16,
-           "°BTDC — formula UNCONFIRMED (8051 encoding, differs from HD6303). "
-           "Address UNCONFIRMED."),
-    MapDef("Fuel",                  0x6C00, 16, 16,
-           "Raw fuel map. Address UNCONFIRMED."),
-    MapDef("Warm Up Enrichment",    0x4500, 17,  1,
-           "Cold-start enrichment. UNCONFIRMED."),
-    MapDef("Boost Cut (No Knock)",  0x4600, 17,  1,
-           "UNCONFIRMED."),
-    MapDef("Boost Cut (Knock)",     0x4611, 17,  1,
-           "UNCONFIRMED."),
-    MapDef("Idle Ignition",         0x4700, 16,  1,
-           "UNCONFIRMED."),
-    MapDef("WOT Enrichment",        0x4750, 17,  1,
-           "UNCONFIRMED."),
+    # All addresses are CPU-space (physical file offset + 0x8000).
+    # ROM mapped at CPU 0x8000–0xFFFF. Physical = CPU − 0x8000.
+    #
+    # CPU confirmed HD6303 (NOT 8051) — binary analysis of 037906024G 5WP4307.
+    # Ignition formula: (210 - raw) / 2.86 = °BTDC — assumed same as Digi 1/2.
+    # Confirmed from decoded candidate at CPU 0x8117 (values 18–50° BTDC, plausible
+    # for 2.0 16V NA). Second ROM needed to confirm alignment.
+    #
+    # NOTE: Physical addresses observed and CPU mapping confirmed; map alignment
+    # within the calibration block is UNCONFIRMED until a second ROM diff is done.
+    MapDef("Ignition",              0x8117, 16, 16,
+           "°BTDC: (210-raw)/2.86 — formula assumed same as Digi 1/2. "
+           "CPU addr 0x8117 = physical 0x0117. "
+           "CANDIDATE — confirmed from single ROM, needs second ROM to verify alignment."),
+    MapDef("Fuel",                  0x84C0, 16, 16,
+           "Raw fuel map. CPU 0x84C0 = physical 0x04C0. "
+           "Value range differs from Digi 1 — scaling unconfirmed. UNCONFIRMED."),
+    MapDef("Warm Up Enrichment",    0x8500, 18,  1,
+           "Cold-start enrichment vs ECT. CPU 0x8500 = phys 0x0500. UNCONFIRMED."),
+    MapDef("Idle Ignition",         0x85C0, 16,  1,
+           "CPU 0x85C0 = phys 0x05C0. UNCONFIRMED."),
+    MapDef("Boost Cut (No Knock)",  0x86E4, 17,  1,
+           "CPU 0x86E4 = phys 0x06E4. UNCONFIRMED."),
+    MapDef("WOT Enrichment",        0x8750, 17,  1,
+           "CPU 0x8750 = phys 0x0750. UNCONFIRMED."),
 ]
 
 # ── Digifant 3 ABA map addresses ─────────────────────────────────────────────
@@ -1069,14 +1095,39 @@ FAMILY_MAPS[MAP_FAMILY_DF3_ABA] = DF3_ABA_MAPS
 FAMILY_MAPS["DF3_9A"] = DF3_ABF_MAPS   # 9A shares ABF layout (presumed)
 
 # ── Digifant 3 reset vectors ─────────────────────────────────────────────────
-# ABF (8051): reset is at 0x0000, bytes [0x02, HH, LL] (LJMP).
-#   Different from HD6303 which puts vector at 0x7FFE.
-#   Detection: check rom[0] == 0x02 AND target address in Digi3 range.
+# ABF (HD6303, NOT 8051): reset vector at CPU 0xFFFE (file 0x7FFE).
+#   Confirmed from 037906024G: vector = 0x9200 → entry at file 0x1200.
+#   This is the same HD6303 convention as Digi 1/2, just a different address.
+#   Detection: CE 00 C8 opcode present + "DIGIFANT 3" string in ROM.
 # ABA (HD6303 presumed): vector at 0x7FFE like Digi 1/2.
 #   UNCONFIRMED — add entries when ROMs arrive.
 
 # ── Digifant 3 known CRCs ────────────────────────────────────────────────────
-# None yet — awaiting ROM collection.
+# First confirmed ROM — binary analysis March 2025:
+#   File: VW_GOLF3_20 16V_ABF_150HP_037906024G_5WP4307_2031_org.rar
+#   CPU:  HD6303 (Siemens 5WP4307 hardware — NOT 8051)
+#   ROM:  32KB (27C256), chip mapped at 0x8000–0xFFFF
+#   ID:   'DIGIFANT 3.2' @ chip 0x8D99
+#   Cal:  'VC113VWAG9.532L016V001505950000WINTER  DATEN_07'
+#   Fill: 549-byte 0x41 block @ chip 0xFD9B–0xFFBF
+#   Vec:  0x9200 (all 8 vectors at 0xFFF8-0xFFFF)
+#   MAP:  200 kPa (CE 00 C8 at chip 0xF636, 0xF64C)
+#   Map addresses: UNCONFIRMED — Ghidra disassembly pending
+DF3_ABF_KNOWN_CRCS: Dict[int, dict] = {
+    0x78462536: dict(
+        variant=VARIANT_DF3_ABF,
+        label="VW Golf 3 2.0 16v ABF 150HP — 037906024G (5WP4307) WINTER DATEN_07",
+        cal="STOCK",
+        rev_addr=None,
+        family=MAP_FAMILY_DF3_ABF,
+        rpm_limit=None,
+        note=(
+            "First confirmed DF3 ABF ROM. CPU confirmed HD6303 (not 8051). "
+            "Calibration: VC113VWAG9.532L016V001505950000. "
+            "Map locations unconfirmed — pending Ghidra analysis."
+        ),
+    ),
+}
 
 # ── Digifant 3 code patches / immo ───────────────────────────────────────────
 # See immo_patches.py for the full immobilizer bypass framework.
@@ -1128,6 +1179,17 @@ _DF3_ABA_PN_SIGNALS: List[str] = [
     "1H0906025",  # base ABF part number
     "1H0906025A", "1H0906025B", "1H0906025C",
     "1H0906023",  # ABA/ADY variant
+]
+
+# DF3 ABF / 9A system identifier strings embedded in ROM firmware
+# "DIGIFANT 3" is written into the firmware at a fixed offset.
+# Confirmed from 037906024G (5WP4307): "DIGIFANT 3.2" at CPU 0x8D99.
+# Stronger discriminator than part-number strings which may be absent.
+_DF3_ABF_SYSTEM_SIGNALS: List[str] = [
+    "DIGIFANT 3",    # matches "DIGIFANT 3.2", "DIGIFANT 3.1", etc.
+    "037906024",     # ABF part-number prefix (G/H/K/L suffixes)
+    "5WP4307",       # specific ECU hardware ID
+    "5WP4308",       # later revision
 ]
 
 # DF2 2E signals — Golf 2 "037" + B/C/D/E suffix, or Bosch 026120026x
@@ -1186,10 +1248,11 @@ def _scan_part_numbers(data: bytes) -> Dict[str, Optional[str]]:
         return None
 
     return {
-        "df3_aba":     _hit(_DF3_ABA_PN_SIGNALS),
-        "df2_2e":      _hit(_DF2_2E_PN_SIGNALS),
-        "df2_pf":      _hit(_DF2_PF_PN_SIGNALS),
-        "df2_generic": _hit(_DF2_GENERIC_PN_SIGNALS),
+        "df3_aba":        _hit(_DF3_ABA_PN_SIGNALS),
+        "df3_abf_system": _hit(_DF3_ABF_SYSTEM_SIGNALS),
+        "df2_2e":         _hit(_DF2_2E_PN_SIGNALS),
+        "df2_pf":         _hit(_DF2_PF_PN_SIGNALS),
+        "df2_generic":    _hit(_DF2_GENERIC_PN_SIGNALS),
     }
 
 
@@ -1260,40 +1323,91 @@ def detect_rom_family(rom_data: bytes) -> Optional['DetectionResult']:
 
     fill_lo = sum(1 for b in data[:0x4000] if b == 0x41) / 0x4000
 
-    # ── 1. DF3 ABF / 9A — 8051 CPU ───────────────────────────────────────────
-    # Signature: LJMP opcode (0x02) at ROM byte 0, target in typical DF3 range,
-    # no 0x41 fill (8051 code layout is completely different from HD6303).
-    if data[0] == 0x02 and fill_lo < 0.05:
-        reset_target = (data[1] << 8) | data[2]
-        if 0x0400 <= reset_target <= 0x2000:
-            # Check whether it might be a 9A (Corrado) vs ABF (Golf 3 GTI)
-            # by scanning for 9A-specific part numbers — both are Siemens 5WP4
-            # so we default to ABF as the more common swap candidate.
-            pn_hits = _scan_part_numbers(data)
-            pn_note = ""
-            variant = VARIANT_DF3_ABF
-            if pn_hits.get("df3_aba"):
-                pn_note = f" PN: {pn_hits['df3_aba']}"
+    # ── 0. CRC check for known DF3 ROMs — highest confidence ─────────────────
+    if crc in DF3_ABF_KNOWN_CRCS:
+        k = DF3_ABF_KNOWN_CRCS[crc]
+        return DetectionResult(
+            variant=k["variant"],
+            family=k["family"],
+            label=k["label"],
+            confidence="HIGH",
+            method="CRC32 fingerprint (DF3 known ROM)",
+            cal=k["cal"],
+            rev_addr=k.get("rev_addr"),
+            rpm_limit=k.get("rpm_limit"),
+            crc32=crc,
+            warnings=[
+                "Digifant 3 ABF detected by CRC32 match.",
+                "CPU: HD6303. ROM mapped at CPU 0x8000–0xFFFF.",
+                "Map addresses CANDIDATE — pending second-ROM diff confirmation.",
+                "Immobilizer present — see Immo tab for bypass patch workflow.",
+            ],
+            map_sensor_kpa=sensor_kpa,
+        )
 
-            return DetectionResult(
-                variant=variant,
-                family=MAP_FAMILY_DF3_ABF,
-                label=VARIANT_LABELS[variant],
-                confidence="HIGH" if pn_note else "MEDIUM",
-                method=(
-                    f"DF3 ABF heuristic: 8051 LJMP reset → 0x{reset_target:04X}"
-                    + pn_note
-                ),
-                cal="UNKNOWN",
-                rev_addr=None,
-                crc32=crc,
-                warnings=[
-                    "Digifant 3 ABF (8051 CPU) detected by heuristic.",
-                    "Map addresses UNCONFIRMED — submit ROM to confirm.",
-                    "Immobilizer present — see Immo tab for bypass patch workflow.",
-                ],
-                map_sensor_kpa=sensor_kpa,
-            )
+    # ── 1. DF3 ABF / 9A — primary: "DIGIFANT 3" string ──────────────────────
+    #
+    # Binary analysis of 037906024G (5WP4307) confirmed:
+    #   CPU:  HD6303 (NOT 8051 — earlier assumption was wrong)
+    #   ROM:  mapped at CPU 0x8000–0xFFFF
+    #   Fill: 2.3% total, two small blocks only — no large 0x41 region
+    #   Reset: CPU 0xFFFE (phys 0x7FFE) → 0x9200 (in CPU 0x8000+ range)
+    #   ID:   "DIGIFANT 3.2" string at phys 0x0D99
+    #
+    # Detection strategy (in priority order):
+    #   A. "DIGIFANT 3" ASCII string anywhere in ROM — strongest signal
+    #   B. HD6303 reset vector (phys 0x7FFE-7FFF) pointing into CPU 0x8000+
+    #      range AND low 0x41 fill — structural fallback
+    #
+    # Note: the "8051 LJMP at byte 0" check has been removed. The 5WP4 hardware
+    # platform exists in both 8051 and HD6303 variants; do not use it as CPU indicator.
+
+    # Search for "DIGIFANT 3" string (covers 3.0, 3.1, 3.2, etc.)
+    _DF3_SIG = b"DIGIFANT 3"
+    df3_sig_idx = data.find(_DF3_SIG)
+
+    # Reset vector value (phys 0x7FFE) — in CPU space
+    vec_bytes_lo = data[0x7FFE:0x8000]
+    vec_str_lo   = f"{vec_bytes_lo[0]:02X}{vec_bytes_lo[1]:02X}"
+    vec_cpu      = (vec_bytes_lo[0] << 8) | vec_bytes_lo[1]
+
+    # DF3 structural check: reset vector points into CPU 0x8000+ (i.e. into ROM)
+    # AND low 0x41 fill (DF3 is code-dense, unlike Digi 1 which has ~65% fill)
+    df3_structural = (vec_cpu >= 0x8000) and (fill_lo < 0.10) and (vec_str_lo not in RESET_VECTORS)
+
+    if df3_sig_idx >= 0 or df3_structural:
+        # Determine specific DF3 variant from part number scan
+        pn_hits = _scan_part_numbers(data)
+
+        # Is this a 9A (Corrado) or ABF (Golf 3)? Both use Siemens 5WP4 hardware.
+        # Default to ABF as the more common swap candidate.
+        variant = VARIANT_DF3_ABF
+        confidence_base = "HIGH" if df3_sig_idx >= 0 else "MEDIUM"
+        sig_detail = f"'DIGIFANT 3' string @ phys 0x{df3_sig_idx:04X}" if df3_sig_idx >= 0 \
+                     else f"HD6303 structural: fill={fill_lo:.1%}, vec={vec_str_lo}"
+
+        pn_note = ""
+        if pn_hits.get("df3_aba"):
+            # Has Golf-3 platform part number — ABA not ABF, but same detection path
+            pn_note = f" PN:{pn_hits['df3_aba']}"
+
+        return DetectionResult(
+            variant=variant,
+            family=MAP_FAMILY_DF3_ABF,
+            label=VARIANT_LABELS[variant],
+            confidence=confidence_base,
+            method=f"DF3 ABF: {sig_detail}{pn_note}",
+            cal="UNKNOWN",
+            rev_addr=None,
+            crc32=crc,
+            warnings=[
+                "Digifant 3 ABF (HD6303 CPU — NOT 8051) detected.",
+                "ROM mapped at CPU 0x8000–0xFFFF. Map addresses in CPU-space.",
+                "Map addresses CANDIDATE only — submit ROM pair for diff confirmation.",
+                "Immobilizer present — see Immo tab for bypass patch workflow.",
+            ],
+            map_sensor_kpa=sensor_kpa,
+        )
 
     # ── 2 & 3. HD6303 fill + unknown reset vector → DF2 or DF3 ABA ──────────
     vec_bytes = data[0x7FFE:0x8000]

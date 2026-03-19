@@ -263,21 +263,53 @@ Ignition formula: `(210 - raw) / 2.86 = °BTDC` (assumed same as Digi 1 — UNCO
 
 > **STATUS: UNCONFIRMED** — all addresses are placeholders. DO NOT tune from these.
 
-## ABF 2.0 16v (Siemens 5WP4)
+## ABF 2.0 16v (Siemens 5WP4 hardware — HD6303 CPU)
 
-CPU: Siemens SAB80C535 (Intel 8051 derivative — **different from HD6303**)
-ROM: 27C256 (32KB) or 27C512 (64KB doubled)
-Detection: `rom[0] == 0x02` (8051 LJMP opcode at reset vector) + no 0x41 fill
-Has immobilizer — see immo_patches.py for bypass framework.
-Ignition formula: **UNCONFIRMED** — 8051 encoding likely differs from HD6303's `(210-raw)/2.86`
+> **STATUS:** First ROM confirmed — `037906024G` (5WP4307). Map alignment CANDIDATE
+> pending second-ROM diff. Do not tune from these addresses until a second ROM confirms.
 
-| Map | Address | Size | Notes |
-|-----|---------|------|-------|
-| Ignition | 0x5C00 | 16×16 | Formula UNCONFIRMED. Address UNCONFIRMED. |
-| Fuel | 0x6C00 | 16×16 | UNCONFIRMED. |
-| Warm Up Enrichment | 0x4500 | 17×1 | UNCONFIRMED. |
-| Boost Cut (No Knock) | 0x4600 | 17×1 | UNCONFIRMED. |
-| Idle Ignition | 0x4700 | 16×1 | UNCONFIRMED. |
+**Binary analysis of `037906024G 5WP4307 2031` (March 2025):**
+
+| Property | Value |
+|----------|-------|
+| CPU | **HD6303** — NOT 8051 (earlier assumption wrong) |
+| Hardware | Siemens 5WP4307 (ECU board) |
+| ROM | 32KB (27C256 / 27C512 lower half) |
+| CPU mapping | 0x8000–0xFFFF. Physical offset = CPU − 0x8000 |
+| ID string | `DIGIFANT 3.2` @ phys 0x0D99 (CPU 0x8D99) — **primary detection anchor** |
+| Cal string | `VC113VWAG9.532L016V001505950000WINTER DATEN_07` @ phys 0x11C6 |
+| Reset vector | CPU 0xFFFE (phys 0x7FFE) → 0x9200 (all 8 vectors same) |
+| 0x41 fill | ~2.3% total — two small blocks only (150B @ phys 0x1130, 549B @ phys 0x7D9B) |
+| MAP sensor | CE 00 C8 (LDX #200) at CPU 0xF636 / 0xF64C — **200 kPa confirmed** |
+| CRC32 | `0x78462536` |
+
+**Map address candidates (physical / CPU):**
+
+All addresses are **CPU-space** (physical file offset + 0x8000).
+Physical = CPU addr − 0x8000.
+
+| Map | CPU addr | Physical | Size | Notes |
+|-----|----------|----------|------|-------|
+| Ignition | 0x8117 | 0x0117 | 16×16 | `(210-raw)/2.86 = °BTDC` assumed. Values 18–50° BTDC — plausible for 2.0 16V NA. CANDIDATE. |
+| Fuel | 0x84C0 | 0x04C0 | 16×16 | Value range 0–48 raw — different scaling from Digi 1. UNCONFIRMED. |
+| Warm Up Enrichment | 0x8500 | 0x0500 | 18×1 | UNCONFIRMED. |
+| Idle Ignition | 0x85C0 | 0x05C0 | 16×1 | UNCONFIRMED. |
+| Boost Cut (No Knock) | 0x86E4 | 0x06E4 | 17×1 | UNCONFIRMED. |
+| WOT Enrichment | 0x8750 | 0x0750 | 17×1 | UNCONFIRMED. |
+
+**Key differences from Digi 1/2:**
+- No large 0x41 fill region — cannot use fill density as detection signal
+- Addresses are CPU-space, not file-offset — all map reads must subtract 0x8000
+- `DIGIFANT 3` ASCII string in ROM is the reliable detection anchor
+- Fuel map value range appears compressed vs Digi 1 (max ~48 raw vs ~180)
+- Ignition formula assumed same as Digi 1 — needs verification against base timing spec
+
+**How to confirm map addresses (second ROM method):**
+1. Obtain a second ABF ROM with known differences (different rev limit, known tune)
+2. Binary diff the two ROMs — changed regions that align with 16×16 / 17×1 blocks are maps
+3. Cross-check decoded ignition values against the base timing spec:
+   ECT sensor disconnected, 2300 RPM → should read 4–8° BTDC (adjust to 6°)
+4. Update `DF3_ABF_MAPS` in `rom_profiles.py` with confirmed addresses
 
 ## ABA / ADY 2.0 8v
 
@@ -310,130 +342,91 @@ How to find the patch address (for ABF, 8051 CPU):
 
 # Digifant 3 ABF — Ghidra Binary RE Workflow
 
-> This section describes how to locate the immobilizer bypass address in an ABF
-> ROM using Ghidra. Follow this when a ROM arrives. Record results in `immo_patches.py`.
+> **CPU CONFIRMED: HD6303** (Motorola 6800 derivative, same family as Digi 1/2).
+> Earlier assumption of 8051 was wrong. Use Ghidra's 6800/6303 processor plugin.
+> ROM is mapped at CPU 0x8000–0xFFFF. Physical file offset = CPU address − 0x8000.
 
 ## Prerequisites
 
 | Tool | Version | Notes |
 |------|---------|-------|
 | Ghidra | 11.x | Download from ghidra-sre.org |
-| 8051 plugin | Built-in | Included in base Ghidra install |
-| ROM binary | 32KB | Upper half if 64KB chip read |
-
-Ghidra's 8051 processor module covers the Siemens SAB80C535 (Intel MCS-51 compatible).
-All standard 8051 opcodes apply. Siemens extensions (if any) are in the data sheet.
+| 6800 processor | Built-in | Covers HD6303 — compatible opcode set |
+| ROM binary | 32KB | Physical file (not CPU-mapped) |
 
 ## Import Settings
 
 ```
 File → Import File → <ROM.BIN>
-Language:     8051 / 8051 (MCS-51 compatible)
-Endianness:   Big-endian
-Address space: CODE, base 0x0000
+Language:     Motorola / 6800 / default / big-endian
+Base address: 0x8000   ← CRITICAL — ROM mapped at 0x8000, not 0x0000
 ```
 
-Click OK → Open CodeBrowser → Analysis → Auto Analyze → accept defaults.
+Setting base address to 0x8000 means all auto-analysis will use correct CPU addresses,
+matching what `rom_profiles.py` stores in `DF3_ABF_MAPS`.
+
+After import: Analysis → Auto Analyze → accept defaults → Analyze.
 
 ## Following the Reset Vector
 
-The 8051 reset vector is always at address **0x0000**. After auto-analysis:
+Reset vector is at CPU 0xFFFE (physical 0x7FFE). All 8 interrupt vectors point to the
+same startup routine (0x9200 confirmed from `037906024G`).
 
-1. Navigate to **0x0000** in the Listing view (`G` → `0x0000`)
-2. You will see an `LJMP` instruction pointing to the startup routine address
-3. Double-click the target address to follow
-
-The startup routine typically:
-- Initialises the stack pointer (`MOV SP, #imm`)
-- Clears internal RAM (loop with `MOV @R0, A`)
-- Calls hardware init subroutines
-- Enters the main injection loop
+1. Navigate to CPU **0x9200** in Listing (`G` → `9200`)
+2. The startup routine initialises stack, clears RAM, calls hardware init, enters main loop
 
 ## Locating the Immo Check
 
-The immobilizer check is a **short subroutine** (≤ 50 instructions) that:
+HD6303 immo check pattern (same principles as Digi 1 patch work, different addresses):
 
-1. Reads an external input pin state into accumulator A:
-   ```
-   MOV  A, P1      ; or P3 depending on ECU board routing
-   ANL  A, #mask   ; isolate the immo signal bit
-   ```
-2. Sets or tests an internal RAM flag byte (address in 0x20–0x7F range)
-3. Returns — the calling code then branches based on the flag
+1. Find a subroutine that reads an external input pin:
+   - HD6303 I/O ports are memory-mapped — look for `LDAA` / `LDAB` from a port address
+   - Typical I/O range: 0x0000–0x001F (internal) and board-specific external addresses
+2. After the subroutine call, look for a conditional branch:
+   - `BEQ rel` = opcode `0x27` (branch if equal / zero flag)
+   - `BNE rel` = opcode `0x26` (branch if not equal)
+3. One branch leads to a no-injection dead end
 
-**Search strategy:**
+## Verifying Map Addresses
 
-In the Decompiler or Listing view, look for references to `P1` or `P3` port registers
-near the start of the main injection loop (the function called every crank event).
-The 8051 Special Function Registers for ports are:
-- `P0` = SFR 0x80
-- `P1` = SFR 0x90
-- `P2` = SFR 0xA0
-- `P3` = SFR 0xB0
+Cross-check the ignition candidate at CPU 0x8117 (phys 0x0117):
 
-Use `Search → For Direct References` to find all reads of these SFRs.
-Narrow to reads inside the startup / init call tree.
+1. In Ghidra, navigate to 0x8117 and view as 16×16 data block
+2. Look for code references to this address (use `XREF` view)
+3. The routine that reads from this block is the ignition lookup — verify it
+   uses the RPM and load axes to index the table
+4. Check decoded values: `(210 − raw) / 2.86 = °BTDC`. Row averages should be
+   in the 20–45° range for a 2.0 16V NA engine
 
-## Identifying the Bypass Target
+## Opcode Reference (HD6303)
 
-After the subroutine call that reads the immo pin, look for:
+| Opcode | Mnemonic | Use in immo context |
+|--------|----------|---------------------|
+| `0x26 rel` | BNE | Branch if not equal — "jump if immo NOT seen" |
+| `0x27 rel` | BEQ | Branch if equal — "jump if immo seen" |
+| `0x01` | NOP | Replace conditional branch with NOP×2 for bypass |
+| `0x86 imm` | LDAA #imm | Load accumulator immediate |
+| `0xB6 addr` | LDAA ext | Load from memory address |
+| `0xBD addr` | JSR ext | Call subroutine |
 
-| Opcode | Mnemonic | Meaning | Action |
-|--------|----------|---------|--------|
-| `0x60` | `JZ rel` | Jump if A==0 | Jumps when immo signal absent |
-| `0x70` | `JNZ rel` | Jump if A≠0 | Jumps when immo signal present |
-
-One of these branches to a **no-injection path** — typically an infinite loop or
-a return that skips the injector output. That conditional jump is the bypass target.
-
-```
-; Example pattern (addresses illustrative):
-0x1050:  LCALL 0x0800    ; call immo check subroutine
-0x1053:  JNZ   0x1A00    ; if immo_flag set → kill injection   <-- TARGET
-0x1055:  LJMP  0x1060    ; continue normal injection loop
-```
-
-The **2-byte patch** is at `0x1053`: replace `0x70 0xAD` with `0x00 0x00` (NOP NOP).
-
-## Verification Steps
-
-Before recording the address:
-
-1. Confirm the bytes at that address in the ROM hex view (`Ctrl+Shift+G` → address)
-2. Confirm the branch target is a dead-end / no-injection path (not a real routine)
-3. Bench test: apply patch, program ROM, crank engine with immo disconnected
-   - Engine should start cleanly
-   - Engine should also start with immo wired (NOP makes check irrelevant)
-
-## Recording the Result
+## Recording Results
 
 Update `PATCH_DB` in `digitool/immo_patches.py`:
 
 ```python
 ImmoPatch(
-    ecu_pn      = "1H0906025A (ABF)",
-    rom_crc     = 0xXXXXXXXX,    # CRC32 of the confirmed ROM
-    patch_addr  = 0x1053,         # confirmed address
-    original    = bytes([0x70, 0xAD]),   # JNZ + offset from ROM
-    patched     = bytes([0x00, 0x00]),   # NOP NOP (8051)
-    description = "ABF immo bypass — JNZ → NOP×2",
+    ecu_pn      = "037906024G (ABF)",
+    rom_crc     = 0x78462536,
+    patch_addr  = 0xXXXX,          # CPU address of conditional branch
+    original    = bytes([0x26, 0xYY]),  # BNE + offset from disassembly
+    patched     = bytes([0x01, 0x01]),  # NOP NOP (HD6303 NOP = 0x01)
+    description = "ABF immo bypass — BNE → NOP×2",
     confidence  = "CONFIRMED",
-    notes       = "Verified on bench MY1992 Golf 3 ABF ECU, 2025-01-xx",
+    notes       = "Verified on bench, date XX",
 ),
 ```
 
-Then bump `confidence` to `"CONFIRMED"` and the DigiTool Immo tab Apply button will unlock.
-
-## ABA / ADY Notes (HD6303 CPU)
-
-If ABA turns out to be HD6303 (same CPU as Digi 1/2):
-
-- Use Ghidra's **Motorola 6800** processor (6303 is compatible with 6800 opcodes)
-- Reset vector is at **0x7FFE–0x7FFF** (big-endian, like Digi 1)
-- NOP opcode = `0x01` (not `0x00` like 8051)
-- Conditional branches: `BEQ` = `0x27`, `BNE` = `0x26`
-- Pattern search: look for `BEQ` or `BNE` after a `BSR` (branch to subroutine)
-  that reads an input port address
+Then bump confidence to `"CONFIRMED"` and the DigiTool Immo tab Apply button unlocks.
 
 ---
 

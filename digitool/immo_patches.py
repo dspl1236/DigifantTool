@@ -15,32 +15,33 @@ infrastructure to wire in. The ROM patch removes the check entirely.
 These ECUs are 30+ years old. The cars they power are enthusiast rebuilds,
 swaps, and restorations — not theft targets.
 
+CPU CONFIRMED (binary analysis, March 2025)
+===========================================
+ABF (Siemens 5WP4 hardware):
+  CPU is HD6303 (Motorola 6800 derivative) — NOT 8051 as previously assumed.
+  Confirmed from binary analysis of 037906024G (5WP4307): CE 00 C8 opcode
+  (LDX #200, HD6303 instruction) present; reset vector at CPU 0xFFFE (not 0x0000).
+  ROM mapped at CPU 0x8000–0xFFFF. Physical offset = CPU − 0x8000.
+  Import Ghidra at base address 0x8000.
+
+ABA/ADY (HD6303 — same family as Digi 1/2, confirmed for ABF, assumed for ABA):
+  Same CPU family. NOP = 0x01. Conditional branches = BEQ (0x27) / BNE (0x26).
+
 MECHANISM
 =========
-ABF (Siemens 5WP4, 8051 CPU):
-  The immo check is a subroutine that reads an input pin state and sets
-  a flag byte in internal RAM. A conditional jump in the injection main loop
-  reads this flag and branches to a no-injection path if the flag is set
-  (immo not seen). Bypass = replace the conditional jump with NOP×2 (0x00 0x00)
-  so the branch is never taken regardless of immo state.
+The immo check is a subroutine that reads an input pin state and sets
+a flag byte. A conditional branch in the injection main loop reads this flag
+and jumps to a no-injection path if the immo signal is absent.
+Bypass = replace the conditional branch with NOP×2 (0x01 0x01, HD6303).
 
-  This is far simpler than ME7 (no SKC, no EEPROM key learning, no seed/key
-  algorithm). The bypass is 2 bytes at one confirmed address.
-
-ABA/ADY (HD6303 if confirmed):
-  Same mechanism but different address. The CMPB/BEQ or BSR/BNE pattern
-  varies by firmware revision — confirm per ROM before patching.
+This is far simpler than ME7 (no SKC, no EEPROM key learning, no seed/key
+algorithm). The bypass is 2 bytes at one confirmed address.
 
 STATUS
 ======
-v0.7.0: Framework only. Patch addresses UNCONFIRMED — placeholders below.
-  Addresses will be populated when ROMs are collected and disassembled.
-  Use Ghidra with the 8051 (for ABF) or 6303 (for ABA) plugin to locate the
-  startup immo check subroutine and the conditional jump after it.
-
-  For ABF: search for a pattern like JZ/JNZ (0x60/0x70) near the start of
-  the main injection loop (called every engine cycle). The immo flag byte
-  is typically in internal RAM address 0x20-0x7F.
+v0.7.2: CPU confirmed HD6303. Patch addresses UNCONFIRMED — placeholders below.
+  Addresses will be populated when ROMs are disassembled in Ghidra.
+  See docs/MAP_LOCATIONS.md for the full HD6303 Ghidra workflow.
 """
 
 from __future__ import annotations
@@ -50,9 +51,9 @@ from dataclasses import dataclass, field
 @dataclass
 class ImmoPatch:
     """One immobilizer bypass patch for a specific ECU part number / ROM."""
-    ecu_pn:      str           # ECU part number (e.g. "1H0906025A")
+    ecu_pn:      str           # ECU part number (e.g. "037906024G")
     rom_crc:     int | None    # CRC32 of the target ROM (None = not yet confirmed)
-    patch_addr:  int           # Working-half offset to patch
+    patch_addr:  int           # Working-half offset to patch (CPU-space for DF3 ABF)
     original:    bytes         # Expected bytes before patch
     patched:     bytes         # Replacement bytes
     description: str
@@ -65,49 +66,52 @@ class ImmoPatch:
 # ---------------------------------------------------------------------------
 # Populated as ROMs are collected and disassembled.
 #
-# 8051 opcode reference (for ABF patch finding):
-#   JZ  rel   = 0x60  (jump if A==0 — used for "flag is clear" check)
-#   JNZ rel   = 0x70  (jump if A!=0 — used for "flag is set" check)
-#   NOP       = 0x00  (two NOPs replace the 2-byte conditional jump)
-#   LJMP addr = 0x02  (3-byte absolute jump — rare in immo bypass context)
-#
-# HD6303 opcode reference (for ABA patch finding):
+# HD6303 opcode reference (ABF and ABA):
 #   BEQ rel   = 0x27  (branch if equal / zero flag set)
 #   BNE rel   = 0x26  (branch if not equal)
-#   NOP       = 0x01  (HD6303 NOP — same as Digi 1 patch convention)
+#   NOP       = 0x01  (HD6303 NOP — same as Digi 1/2 patch convention)
+#   LDAA ext  = 0xB6  (load accumulator from external address — used to read I/O pin)
+#   JSR ext   = 0xBD  (call subroutine)
+#
+# NOTE: Earlier versions of this file referenced 8051 opcodes (JZ=0x60, JNZ=0x70,
+# NOP=0x00). Those have been corrected. ABF CPU is confirmed HD6303.
 
 PATCH_DB: list[ImmoPatch] = [
 
-    # ── ABF 2.0 16v (Siemens 5WP4, 8051) ────────────────────────────────────
+    # ── ABF 2.0 16v (Siemens 5WP4 hardware — CPU confirmed HD6303) ──────────
+    # CPU confirmed HD6303 from binary analysis of 037906024G (5WP4307).
+    # NOT 8051. NOP = 0x01. Conditional branches = BNE (0x26) / BEQ (0x27).
+    # ROM mapped at CPU 0x8000–0xFFFF. Import Ghidra at base address 0x8000.
     ImmoPatch(
-        ecu_pn      = "1H0906025 / 1H0906025A (ABF)",
-        rom_crc     = None,
+        ecu_pn      = "037906024G / 037906024H (ABF Golf 3 GTI)",
+        rom_crc     = 0x78462536,   # 037906024G 5WP4307 WINTER DATEN_07
         patch_addr  = 0x0000,   # UNCONFIRMED — placeholder
-        original    = bytes([0x70, 0x00]),   # JNZ + offset placeholder
-        patched     = bytes([0x00, 0x00]),   # NOP NOP (8051)
-        description = "ABF immo bypass — replace JNZ (immo flag check) with NOP×2.",
+        original    = bytes([0x26, 0x00]),   # BNE + offset (HD6303)
+        patched     = bytes([0x01, 0x01]),   # NOP NOP (HD6303 NOP = 0x01)
+        description = "ABF immo bypass — replace BNE (immo flag check) with NOP×2.",
         confidence  = "UNCONFIRMED",
         notes       = (
-            "Address 0x0000 is a placeholder.\n"
+            "CPU confirmed HD6303 (NOT 8051). NOP = 0x01.\n"
+            "ROM mapped at CPU 0x8000–0xFFFF. Physical = CPU − 0x8000.\n"
             "To find the real address:\n"
-            "  1. Open the 32KB ROM in Ghidra with the 8051 plugin.\n"
-            "  2. Find the startup routine (follows LJMP from reset at 0x0000).\n"
-            "  3. Look for a subroutine that reads an external port/pin into A.\n"
-            "  4. Find the JZ or JNZ immediately after that call.\n"
-            "  5. Replace with 0x00 0x00 (NOP NOP).\n"
-            "  6. Update this entry with the confirmed address and original bytes."
+            "  1. Open 32KB ROM in Ghidra, Language: Motorola 6800, base=0x8000.\n"
+            "  2. Navigate to reset vector CPU 0x9200 (phys 0x1200).\n"
+            "  3. Find subroutine reading external I/O pin (LDAA ext address).\n"
+            "  4. Find BNE (0x26) or BEQ (0x27) after that call — target kills injection.\n"
+            "  5. Replace 2 bytes with NOP NOP (0x01 0x01).\n"
+            "  6. Bench test. Update rom_crc + patch_addr + original bytes."
         ),
     ),
 
     ImmoPatch(
-        ecu_pn      = "1H0906025B / 1H0906025C (ABF later revision)",
+        ecu_pn      = "1H0906025 / 1H0906025A / 1H0906025B (ABF later variants)",
         rom_crc     = None,
         patch_addr  = 0x0000,
-        original    = bytes([0x60, 0x00]),   # JZ + offset placeholder
-        patched     = bytes([0x00, 0x00]),
-        description = "ABF immo bypass (later revision) — JZ variant.",
+        original    = bytes([0x27, 0x00]),   # BEQ + offset (HD6303)
+        patched     = bytes([0x01, 0x01]),   # NOP NOP (HD6303)
+        description = "ABF immo bypass (later variant) — BEQ variant.",
         confidence  = "UNCONFIRMED",
-        notes       = "Later firmware may use JZ instead of JNZ. Confirm per ROM.",
+        notes       = "Later firmware may use BEQ instead of BNE. Confirm per ROM.",
     ),
 
     # ── ABA / ADY 2.0 8v (HD6303 presumed) ───────────────────────────────────

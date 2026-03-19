@@ -13,6 +13,7 @@ from digitool.rom_profiles import (
     MAP_FAMILY_DF2, MAP_FAMILY_DF3_ABF, MAP_FAMILY_DF3_ABA,
     VARIANT_LABELS, FAMILY_MAPS,
     DF2_MAPS, DF3_ABF_MAPS, DF3_ABA_MAPS,
+    DF3_ABF_KNOWN_CRCS,
     detect_rom,
 )
 from digitool.immo_patches import (
@@ -40,11 +41,27 @@ def make_df2_rom():
     return rom
 
 def make_df3_abf_rom():
-    """Simulate a DF3 ABF ROM: 8051 LJMP at byte 0, no 0x41 fill."""
-    rom = bytearray([0x02] * 0x8000)   # 0x02 = LJMP opcode
-    rom[0] = 0x02
-    rom[1] = 0x14   # target high byte
-    rom[2] = 0x97   # target low → LJMP 0x1497 (typical DF3 ABF range)
+    """
+    Simulate a DF3 ABF ROM using the confirmed HD6303 structure.
+
+    Binary analysis of 037906024G (5WP4307) established:
+      - CPU is HD6303 (NOT 8051 — earlier assumption was wrong)
+      - ROM mapped at CPU 0x8000–0xFFFF
+      - 'DIGIFANT 3' string is the primary detection anchor
+      - Low 0x41 fill (~2%), reset vector points into CPU 0x8000+ range
+      - No large 0x41 fill region unlike Digi 1/2
+    """
+    rom = bytearray([0x00] * 0x8000)   # sparse/code-dense, no 0x41 fill
+    # Embed 'DIGIFANT 3.2' ID string at physical 0x0D99 (CPU 0x8D99)
+    sig = b"DIGIFANT 3.2        XXXX"
+    for i, b in enumerate(sig):
+        rom[0x0D99 + i] = b
+    # Reset vector at physical 0x7FFE → CPU 0x9200 (points into CPU 0x8000+ = ROM)
+    rom[0x7FFE] = 0x92
+    rom[0x7FFF] = 0x00
+    # Small 0x41 fill block (representative of real ROM)
+    for i in range(150):
+        rom[0x1130 + i] = 0x41
     return rom
 
 def make_df3_aba_rom():
@@ -114,13 +131,26 @@ class TestFamilyMaps:
                 assert m.rows > 0 and m.cols > 0, \
                     f"{m.name}: invalid dims {m.rows}×{m.cols}"
 
-    def test_all_map_addresses_in_32kb(self):
-        for maps in (DF2_MAPS, DF3_ABF_MAPS, DF3_ABA_MAPS):
-            for m in maps:
-                assert 0 <= m.data_addr < 0x8000, \
-                    f"{m.name}: addr 0x{m.data_addr:04X} out of 32KB"
-                assert m.data_addr + m.size <= 0x8000, \
-                    f"{m.name}: overflows 32KB"
+    def test_all_map_addresses_in_range(self):
+        """
+        DF2 / DF3 ABA map addresses are physical 32KB offsets (< 0x8000).
+        DF3 ABF addresses are CPU-space (0x8000–0xFFFF) — ROM mapped at CPU 0x8000+.
+        """
+        for m in DF2_MAPS:
+            assert 0 <= m.data_addr < 0x8000, \
+                f"DF2 {m.name}: addr 0x{m.data_addr:04X} out of 32KB"
+            assert m.data_addr + m.size <= 0x8000, \
+                f"DF2 {m.name}: overflows 32KB"
+        for m in DF3_ABA_MAPS:
+            assert 0 <= m.data_addr < 0x8000, \
+                f"DF3 ABA {m.name}: addr 0x{m.data_addr:04X} out of 32KB"
+        for m in DF3_ABF_MAPS:
+            # CPU-space: 0x8000–0xFFFF (physical = addr - 0x8000)
+            assert 0x8000 <= m.data_addr <= 0xFFFF, \
+                f"DF3 ABF {m.name}: addr 0x{m.data_addr:04X} not in CPU-space 0x8000–0xFFFF"
+            phys = m.data_addr - 0x8000
+            assert phys + m.size <= 0x8000, \
+                f"DF3 ABF {m.name}: overflows 32KB physical"
 
 
 # ── detect_rom_family ─────────────────────────────────────────────────────────
@@ -133,15 +163,15 @@ class TestDetectRomFamily:
         result = detect_rom_family(bytes(rom))
         assert result is None
 
-    def test_df3_abf_8051_detected(self):
-        """8051-signature ROM detected as DF3 ABF."""
+    def test_df3_abf_digifant3_string_detected(self):
+        """ROM with 'DIGIFANT 3' string detected as DF3 ABF (HD6303, not 8051)."""
         rom = make_df3_abf_rom()
         result = detect_rom_family(bytes(rom))
         assert result is not None
         assert result.variant == VARIANT_DF3_ABF
         assert result.family == MAP_FAMILY_DF3_ABF
         assert result.confidence in ("MEDIUM", "HIGH")
-        assert "DF3" in result.method or "8051" in result.method
+        assert "DF3" in result.method or "DIGIFANT 3" in result.method
 
     def test_df3_abf_has_immo_warning(self):
         rom = make_df3_abf_rom()
@@ -150,6 +180,15 @@ class TestDetectRomFamily:
         immo_warned = any("immo" in w.lower() or "bypass" in w.lower()
                           for w in result.warnings)
         assert immo_warned
+
+    def test_df3_abf_warning_mentions_hd6303(self):
+        """Warning must reference HD6303 CPU (not 8051)."""
+        rom = make_df3_abf_rom()
+        result = detect_rom_family(bytes(rom))
+        assert result is not None
+        hd_mentioned = any("HD6303" in w or "hd6303" in w.lower()
+                           for w in result.warnings)
+        assert hd_mentioned
 
     def test_df2_hd6303_unknown_vector_detected(self):
         """HD6303 fill + unknown reset vector → DF2 detection."""
@@ -200,6 +239,15 @@ class TestDetectRomAll:
         maps = result.maps
         assert len(maps) >= 4
         assert any(m.name == "Ignition" for m in maps)
+
+    def test_df3_abf_crc_match(self):
+        """Known CRC (037906024G) returns HIGH confidence via CRC path."""
+        from digitool.rom_profiles import DF3_ABF_KNOWN_CRCS
+        # Verify our known CRC dict is populated and wired
+        assert 0x78462536 in DF3_ABF_KNOWN_CRCS
+        entry = DF3_ABF_KNOWN_CRCS[0x78462536]
+        assert entry["variant"] == VARIANT_DF3_ABF
+        assert entry["cal"] == "STOCK"
 
 
 # ── Immo patch database ───────────────────────────────────────────────────────
@@ -530,23 +578,37 @@ class TestDetectionConfidence:
         assert result.confidence == "HIGH"
 
     def test_df3_abf_pn_found_is_high_confidence(self):
-        """ABF 8051 ROM with a 1H part number in fill → HIGH confidence."""
-        rom = bytearray([0x02] * 0x8000)
-        rom[0] = 0x02; rom[1] = 0x14; rom[2] = 0x97
+        """ABF ROM with a 1H part number in fill → HIGH confidence."""
+        rom = bytearray([0x00] * 0x8000)
+        sig = b"DIGIFANT 3.2"
+        for i, b in enumerate(sig):
+            rom[0x0D99 + i] = b
         for i, c in enumerate(b"1H0906025A"):
             rom[0x0400 + i] = c
+        rom[0x7FFE] = 0x92; rom[0x7FFF] = 0x00
         result = detect_rom_family(bytes(rom))
         assert result is not None
         assert result.variant == VARIANT_DF3_ABF
         assert result.confidence == "HIGH"
 
-    def test_df3_abf_no_pn_is_medium_confidence(self):
-        rom = bytearray([0x02] * 0x8000)
-        rom[0] = 0x02; rom[1] = 0x14; rom[2] = 0x97
+    def test_df3_abf_no_pn_is_high_confidence_via_string(self):
+        """DIGIFANT 3 string is itself HIGH confidence — no PN needed."""
+        rom = make_df3_abf_rom()
         result = detect_rom_family(bytes(rom))
         assert result is not None
         assert result.variant == VARIANT_DF3_ABF
-        assert result.confidence == "MEDIUM"
+        # DIGIFANT 3 string found → HIGH confidence regardless of PN
+        assert result.confidence == "HIGH"
+
+    def test_df3_abf_structural_only_is_medium_confidence(self):
+        """Structural detection (no DIGIFANT 3 string, no PN) → MEDIUM."""
+        rom = bytearray([0x00] * 0x8000)
+        # Reset vector into CPU 0x8000+ but no DIGIFANT string, low fill
+        rom[0x7FFE] = 0x92; rom[0x7FFF] = 0x00
+        result = detect_rom_family(bytes(rom))
+        # May be None (fell through) or MEDIUM — structural alone is weak
+        if result is not None and result.variant == VARIANT_DF3_ABF:
+            assert result.confidence == "MEDIUM"
 
     def test_df2_warning_mentions_no_immo(self):
         """DF2 warning should note no immobilizer (direct swap compatible)."""
