@@ -806,19 +806,30 @@ def detect_rom(rom_data: bytes) -> DetectionResult:
 # ===========================================================================
 #
 # Digifant 2 covers late 80s / early 90s Golf 2 / Jetta 2 / Scirocco with
-# the 2E (2.0 8v) and PF/RV (1.8 8v) engines.
+# the 2E (2.0 8v) and PF/RV (1.8 8v) engines. 1987-1992.
 #
 # CPU:       HD6303 (Hitachi, Motorola 6800 derivative) — same family as Digi 1
 # ROM:       27C256 (32KB) single chip
 # No immobilizer.
 # Ignition:  same formula as Digi 1: (210 - raw) / 2.86 = °BTDC
 # Rev limit: same formula: 30,000,000 / uint16_be
-# MAP sensor: same opcode detection (CE 00 C8 / CE 00 FA)
+# MAP sensor: CE 00 C8 / CE 00 FA opcode detection (same as Digi 1)
 #
-# Key difference from Digi 1:
-#   Different reset vector — Digi 2 ECUs are later hardware revisions.
-#   Map addresses are similar to G60 but shifted/reorganised.
-#   RPM scalar uses same 16-bit big-endian format.
+# HARDWARE — KEY DIFFERENCES FROM G60 (Digi 1):
+#   Digifant II uses a SEPARATE 7-pin Ignition Control Unit (ICU).
+#     ECU pin 25 → ICU pin 6 (timing signal). ICU drives the coil directly.
+#     G60 has integrated coil power stage — no external ICU.
+#   MAF sensor (airflow potentiometer) on pins 17+21 — NOT a CO potentiometer.
+#     G60 uses CO pot on pin 5 (no MAF on 17/21).
+#   Idle/WOT switch only (binary) — no throttle potentiometer.
+#     Digifant I California (38-pin, different ECU) uses a TPS.
+#   Injectors batch-fired (all 4 in parallel) — same as G60.
+#
+# NOTE on naming confusion:
+#   "Digifant I" in US/VW parts refers to the California-only 38-pin ECU
+#   (individual injector control, TPS, EGR) — NOT the G60 Corrado unit.
+#   The G60 Corrado uses the Digifant II 25-pin connector and is unrelated
+#   to the California Digifant I. DigiTool covers the G60 25-pin system.
 #
 # STATUS: UNCONFIRMED — addresses are placeholders from community posts.
 #   All addresses marked UNCONFIRMED will be updated when ROMs arrive.
@@ -828,6 +839,7 @@ def detect_rom(rom_data: bytes) -> DetectionResult:
 #   2E engine: 037906023B, 037906023C, 037906023D, 037906023E
 #   PF engine: 037906023, 037906023A
 #   Bosch codes: 0 261 200 262 / 263 / 264 (2E), 0 261 200 169 / 170 (PF)
+#   Ignition Control Unit (separate, not programmed): 0 227 100 099 (standard)
 # ===========================================================================
 
 VARIANT_DF2_2E  = "DF2_2E"

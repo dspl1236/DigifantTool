@@ -230,3 +230,79 @@ How to find the patch address (for ABF, 8051 CPU):
 3. Find subroutine that reads an external input pin into accumulator A
 4. The conditional jump (JZ 0x60 or JNZ 0x70) after that call is the immo check
 5. Replace with NOP NOP (0x00 0x00) — test on bench before driving
+
+---
+
+# ECU Hardware Reference (from xjamiex A2Resource + VW training material)
+
+## Digifant Naming — Important Distinction
+
+The name "Digifant I" is used inconsistently across sources:
+
+| System | Connector | Market | Engines | ICU |
+|--------|-----------|--------|---------|-----|
+| **Digifant II** (what we call DF2) | 25-pin | Worldwide | 2E 2.0 8v, PF/RV 1.8 8v | Separate 7-pin ICU |
+| **Digifant I G60** (what DigiTool covers as Digi 1) | 25-pin | Worldwide | G60, G40 | Integrated coil stage |
+| **Digifant I California** | 38-pin | USA only | 2E (California spec) | Integrated coil stage |
+
+The G60 Corrado ECU uses the **same 25-pin connector as Digifant II** and is
+often called "Digifant I G60" by parts suppliers but is architecturally the same
+family as what DigiTool currently supports. The California 38-pin "Digifant I" is
+a distinct, more advanced system with individual injector control and TPS.
+
+## Digifant II — ECU Pin Functions (25-pin)
+
+| Pin | Function | Notes |
+|-----|----------|-------|
+| 1 | Starter Power | |
+| 2 | Oxygen Sensor | |
+| 3 | Fuel Pump | |
+| 4 | Knock Sensor Signal | |
+| 5 | Knock Sensor Ground | |
+| 6 | Ground for sensors | |
+| 7 | Knock Sensor shield | |
+| 8 | Distributor Pin 3 (positive) | |
+| 9 | Intake Air Temperature Sensor | |
+| 10 | Coolant Temperature Sensor | |
+| 11 | Idle/WOT Switch | Binary only — no TPS |
+| 12 | Injector Power | All 4 injectors in parallel |
+| 13 | Ground | |
+| 14 | Power from CU relay | |
+| 16 | A/C compressor signal | |
+| 17 | Airflow Sensor Potentiometer | MAF — unlike G60 CO pot |
+| 18 | Distributor Pin 2 (hall sender) | |
+| 19 | Ground | |
+| 20 | Malfunction Light | |
+| 21 | Airflow Sensor Potentiometer | MAF (second wire) |
+| 22 | Idle Stabilizer Valve | |
+| 23 | Idle Stabilizer Valve | |
+| **25** | **To Ignition Control Unit** | **KEY: Separate ICU required** |
+
+## Digifant II — Ignition Control Unit (7-pin, separate module)
+
+| Pin | Function |
+|-----|----------|
+| 1 | Coil Pin 1 |
+| 2 | Ground |
+| 4 | Start/Run power |
+| 6 | From Digifant ECU (timing signal) |
+
+The ICU is **not programmable** — it just receives the timing signal from the ECU
+and drives the coil. The timing map lives entirely in the ECU ROM. DigiTool edits
+the ECU ROM; the ICU requires no modification for tuning.
+
+## G60 / G40 ECU vs Digifant II — Hardware Differences
+
+| Feature | Digifant II (2E/PF) | G60/G40 (DigiTool) |
+|---------|--------------------|--------------------|
+| Load sensing | MAF sensor (airflow pot, pins 17+21) | CO potentiometer (pin 5) |
+| Ignition | Separate 7-pin ICU | Integrated coil power stage |
+| Throttle | Binary idle/WOT switch only | Binary idle/WOT switch |
+| Injectors | Batch-fired, parallel | Batch-fired, parallel |
+| Knock | Single knock sensor | Single knock sensor |
+| Connector | 25-pin | 25-pin (same!) |
+
+Because the MAF replaces the CO pot, the load axis interpretation in the fuel map
+differs between DF2 and G60. G60 maps are calibrated for CO pot voltage; DF2 maps
+are calibrated for MAF airflow voltage. The map structure (16×16) is the same but
+the axis scaling is different.
