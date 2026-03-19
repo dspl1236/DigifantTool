@@ -15,7 +15,11 @@ from PyQt5.QtGui import QFont
 
 from digitool.version import WINDOW_TITLE, APP_VERSION
 from digitool.rom_profiles import (
-    detect_rom, normalize_rom_image, DetectionResult,
+    detect_rom, detect_rom_all, normalize_rom_image, DetectionResult,
+)
+from digitool.immo_patches import (
+    PATCH_DB, find_patch, find_patches_for_ecu, check_already_patched,
+    apply_patch, verify_patch_location, ImmoPatchError,
 )
 from digitool.kwp import (
     KWPMonitor, LiveValues,
@@ -358,7 +362,7 @@ class MainWindow(QMainWindow):
         self._load_rom_data(path, bytes(data))
 
     def _load_rom_data(self, path: str, data: bytes):
-        result = detect_rom(data)
+        result = detect_rom_all(data)
         self._rom_path = path
         self._rom      = bytearray(data)
         self._result   = result
@@ -369,6 +373,20 @@ class MainWindow(QMainWindow):
 
         if result.warnings:
             QMessageBox.information(self, "ROM Detection", "\n".join(result.warnings))
+
+        # Notify if this is a DF3 immo variant
+        from digitool.rom_profiles import VARIANT_DF3_ABF, VARIANT_DF3_ABA, VARIANT_DF3_9A
+        _DF3_IMMO = {VARIANT_DF3_ABF, VARIANT_DF3_ABA, VARIANT_DF3_9A}
+        if result.variant in _DF3_IMMO:
+            patches = find_patches_for_ecu(result.variant)
+            confirmed = [p for p in patches if p.confidence == "CONFIRMED"]
+            if confirmed:
+                status = f"{len(confirmed)} confirmed bypass patch(es) available."
+            else:
+                status = "Immo bypass patches UNCONFIRMED — submit ROM to help confirm."
+            self.statusbar.showMessage(
+                f"⚠  Digifant 3 with immobilizer detected.  {status}", 10000
+            )
 
         # Rebuild dynamic map tabs
         self._rebuild_map_tabs(result, self._rom)

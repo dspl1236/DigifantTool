@@ -399,9 +399,19 @@ class OverviewTab(QWidget):
         """Detect digilag patch state and configure the Digi-Lag group box."""
         from digitool.rom_profiles import MAP_FAMILY_TRIPLE, MAP_FAMILY_MK2
 
-        # Hide entirely for unsupported families
-        if result.family in (MAP_FAMILY_TRIPLE, MAP_FAMILY_MK2):
+        # Hide for unsupported or unconfirmed families
+        from digitool.rom_profiles import (MAP_FAMILY_TRIPLE, MAP_FAMILY_MK2,
+                                            MAP_FAMILY_DF2, MAP_FAMILY_DF3_ABF,
+                                            MAP_FAMILY_DF3_ABA)
+        if result.family in (MAP_FAMILY_TRIPLE, MAP_FAMILY_MK2,
+                              MAP_FAMILY_DF3_ABF):
             self.grp_digilag.setVisible(False)
+            return
+
+        # DF2 / DF3_ABA — same mechanism as Digi 1 but addresses unconfirmed
+        if result.family in (MAP_FAMILY_DF2, MAP_FAMILY_DF3_ABA):
+            self.grp_digilag.setVisible(True)
+            self._show_digilag_unconfirmed()
             return
 
         self.grp_digilag.setVisible(True)

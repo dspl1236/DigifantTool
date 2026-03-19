@@ -799,3 +799,338 @@ def detect_rom(rom_data: bytes) -> DetectionResult:
         ],
         map_sensor_kpa=sensor_kpa,
     )
+
+
+# ===========================================================================
+# DIGIFANT 2  (added v0.7.0)
+# ===========================================================================
+#
+# Digifant 2 covers late 80s / early 90s Golf 2 / Jetta 2 / Scirocco with
+# the 2E (2.0 8v) and PF/RV (1.8 8v) engines.
+#
+# CPU:       HD6303 (Hitachi, Motorola 6800 derivative) — same family as Digi 1
+# ROM:       27C256 (32KB) single chip
+# No immobilizer.
+# Ignition:  same formula as Digi 1: (210 - raw) / 2.86 = °BTDC
+# Rev limit: same formula: 30,000,000 / uint16_be
+# MAP sensor: same opcode detection (CE 00 C8 / CE 00 FA)
+#
+# Key difference from Digi 1:
+#   Different reset vector — Digi 2 ECUs are later hardware revisions.
+#   Map addresses are similar to G60 but shifted/reorganised.
+#   RPM scalar uses same 16-bit big-endian format.
+#
+# STATUS: UNCONFIRMED — addresses are placeholders from community posts.
+#   All addresses marked UNCONFIRMED will be updated when ROMs arrive.
+#   DO NOT tune from these addresses until confirmed against a real chip.
+#
+# Known ECU part numbers:
+#   2E engine: 037906023B, 037906023C, 037906023D, 037906023E
+#   PF engine: 037906023, 037906023A
+#   Bosch codes: 0 261 200 262 / 263 / 264 (2E), 0 261 200 169 / 170 (PF)
+# ===========================================================================
+
+VARIANT_DF2_2E  = "DF2_2E"
+VARIANT_DF2_PF  = "DF2_PF"
+MAP_FAMILY_DF2  = "DF2"
+
+VARIANT_LABELS.update({
+    VARIANT_DF2_2E: "Digifant 2 — 2E (2.0 8v Golf 2 / Jetta 2)",
+    VARIANT_DF2_PF: "Digifant 2 — PF/RV (1.8 8v Golf 2 / Jetta 2)",
+})
+
+# ── Digifant 2 map addresses ─────────────────────────────────────────────────
+# Layout closely mirrors G60 single-map. Addresses are community estimates —
+# UNCONFIRMED until ROM collection arrives.
+# The 2E and PF variants are believed to share the same address layout
+# (same ECU board, same firmware structure, different calibration values).
+
+DF2_MAPS: List[MapDef] = [
+    MapDef("Ignition",              0x4004, 16, 16,
+           "°BTDC: (210-raw)/2.86. ADDRESSES UNCONFIRMED."),
+    MapDef("Fuel",                  0x4104, 16, 16,
+           "Raw fuel map. ADDRESSES UNCONFIRMED."),
+    MapDef("RPM Scalar",            0x420C, 16,  1,
+           "16×1, 16-bit values. UNCONFIRMED."),
+    MapDef("Coil Dwell",            0x422C, 16,  1,
+           "UNCONFIRMED."),
+    MapDef("Knock Multiplier",      0x424C, 16,  1,
+           "UNCONFIRMED."),
+    MapDef("Knock Retard Rate",     0x425C, 16,  1,
+           "UNCONFIRMED."),
+    MapDef("Knock Decay Rate",      0x426C, 16,  1,
+           "UNCONFIRMED."),
+    MapDef("Warm Up Enrichment",    0x42DD, 17,  1,
+           "Cold-start enrichment vs ECT. UNCONFIRMED."),
+    MapDef("IAT Compensation",      0x42EE, 17,  1,
+           "UNCONFIRMED."),
+    MapDef("Boost Cut (No Knock)",  0x450F, 17,  1,
+           "UNCONFIRMED."),
+    MapDef("Boost Cut (Knock)",     0x4520, 17,  1,
+           "UNCONFIRMED."),
+    MapDef("WOT Enrichment",        0x4541, 17,  1,
+           "UNCONFIRMED."),
+    MapDef("Idle Ignition",         0x447B, 16,  1,
+           "UNCONFIRMED."),
+]
+
+FAMILY_MAPS[MAP_FAMILY_DF2] = DF2_MAPS
+
+# ── Digifant 2 reset vectors ─────────────────────────────────────────────────
+# UNCONFIRMED — to be populated from ROM dumps.
+# Placeholder entries commented out until real vectors are confirmed:
+#   "XXXX": dict(variant=VARIANT_DF2_2E, family=MAP_FAMILY_DF2, rev_addr=None),
+# When ROMs arrive: read bytes at 0x7FFE-0x7FFF and add entry to RESET_VECTORS.
+
+# ── Digifant 2 known CRCs ────────────────────────────────────────────────────
+# None yet — awaiting ROM collection.
+# Format when ROMs arrive:
+#   0xXXXXXXXX: dict(variant=VARIANT_DF2_2E, label="2E stock Golf 2 MY1990",
+#                    cal="STOCK", rev_addr=0xXXXX, family=MAP_FAMILY_DF2, rpm_limit=6XXX)
+
+# ── Digifant 2 code patches ──────────────────────────────────────────────────
+# Digi 2 has the same digilag mechanism as Digi 1 — addresses TBD from ROM.
+CODE_PATCHES_DF2 = {
+    "digilag_lo":  dict(addr=0x0000, stock=b'\x01\x00', patch=b'\x00\x00',
+                        label="Digilag (low RPM) — ADDR UNCONFIRMED"),
+    "digilag_hi":  dict(addr=0x0000, stock=b'\x03\x00', patch=b'\x00\x00',
+                        label="Digilag (high RPM) — ADDR UNCONFIRMED"),
+    "open_loop":   dict(addr=0x0000, stock=b'\xBD\x6D\x07', patch=b'\x01\x01\x01',
+                        label="Open Loop Lambda — ADDR UNCONFIRMED"),
+}
+VARIANT_PATCHES[VARIANT_DF2_2E] = CODE_PATCHES_DF2
+VARIANT_PATCHES[VARIANT_DF2_PF] = CODE_PATCHES_DF2
+FAMILY_PATCHES[MAP_FAMILY_DF2]  = CODE_PATCHES_DF2
+
+
+# ===========================================================================
+# DIGIFANT 3  (added v0.7.0)
+# ===========================================================================
+#
+# Digifant 3 covers early-mid 90s Golf 3 / Vento / Corrado.
+# Key engines: ABF (2.0 16v), ABA/ADY (2.0 8v), 9A (2.0 16v Corrado).
+#
+# ABF ECU: Siemens 5WP4 — CPU is Siemens SAB80C535 (Intel 8051 derivative)
+#          NOT HD6303. Different instruction set from Digi 1/2.
+#          Reset vector at 0x0000-0x0002 (8051: LJMP instruction).
+#          Ignition formula UNCONFIRMED — may differ from (210-raw)/2.86.
+#          ROM: 27C256 (32KB) or 27C512 (64KB doubled).
+#          Has immobilizer: single pin check at startup.
+#
+# ABA/ADY ECU: Bosch 0 261 200 XXX series.
+#          CPU likely HD6303 (same family as Digi 1/2) — UNCONFIRMED.
+#          May share map layout with Digi 2.
+#
+# 9A (Corrado 16v): Siemens 5WP4/5WP5 — same family as ABF.
+#
+# STATUS: UNCONFIRMED — all addresses are placeholders.
+#
+# IMMOBILIZER (Digi 3 with immo):
+#   The immo check is a simple subroutine: ECU reads pin state from the
+#   instrument cluster's transponder reader. If absent → kills injection.
+#   Bypass: replace the conditional jump (JZ/JNZ) after the check with
+#   NOP bytes. 2-3 bytes at one address in ROM.
+#   Purpose: engine swap into pre-immo cars (ABF into Golf 2, etc.)
+#   These ECUs are 30+ years old — no theft risk context.
+#   See immo_patches.py for the full patch framework.
+#
+# Known ECU part numbers:
+#   ABF:      5WP4 0xx (Siemens), 1H0906025, 1H0906025A/B/C
+#   ABA/ADY:  0 261 200 XXX (Bosch)
+#   9A:       5WP4/5WP5 (Siemens)
+# ===========================================================================
+
+VARIANT_DF3_ABF = "DF3_ABF"
+VARIANT_DF3_ABA = "DF3_ABA"
+VARIANT_DF3_9A  = "DF3_9A"
+MAP_FAMILY_DF3_ABF = "DF3_ABF"
+MAP_FAMILY_DF3_ABA = "DF3_ABA"
+
+VARIANT_LABELS.update({
+    VARIANT_DF3_ABF: "Digifant 3 — ABF (2.0 16v Golf 3 GTI)",
+    VARIANT_DF3_ABA: "Digifant 3 — ABA/ADY (2.0 8v Golf 3 / Vento)",
+    VARIANT_DF3_9A:  "Digifant 3 — 9A (2.0 16v Corrado)",
+})
+
+# ── Digifant 3 ABF map addresses ─────────────────────────────────────────────
+# Siemens 5WP4, 8051-based. All addresses UNCONFIRMED.
+# Ignition formula likely different — 8051 encoding vs HD6303.
+# Will be determined from ROM disassembly when chips arrive.
+
+DF3_ABF_MAPS: List[MapDef] = [
+    MapDef("Ignition",              0x5C00, 16, 16,
+           "°BTDC — formula UNCONFIRMED (8051 encoding, differs from HD6303). "
+           "Address UNCONFIRMED."),
+    MapDef("Fuel",                  0x6C00, 16, 16,
+           "Raw fuel map. Address UNCONFIRMED."),
+    MapDef("Warm Up Enrichment",    0x4500, 17,  1,
+           "Cold-start enrichment. UNCONFIRMED."),
+    MapDef("Boost Cut (No Knock)",  0x4600, 17,  1,
+           "UNCONFIRMED."),
+    MapDef("Boost Cut (Knock)",     0x4611, 17,  1,
+           "UNCONFIRMED."),
+    MapDef("Idle Ignition",         0x4700, 16,  1,
+           "UNCONFIRMED."),
+    MapDef("WOT Enrichment",        0x4750, 17,  1,
+           "UNCONFIRMED."),
+]
+
+# ── Digifant 3 ABA map addresses ─────────────────────────────────────────────
+# ABA/ADY: HD6303-based (same CPU as Digi 1/2 — UNCONFIRMED). All UNCONFIRMED.
+
+DF3_ABA_MAPS: List[MapDef] = [
+    MapDef("Ignition",              0x5800, 16, 16,
+           "°BTDC: (210-raw)/2.86 — if HD6303 (UNCONFIRMED). Address UNCONFIRMED."),
+    MapDef("Fuel",                  0x6800, 16, 16,
+           "UNCONFIRMED."),
+    MapDef("Warm Up Enrichment",    0x4400, 17,  1,
+           "UNCONFIRMED."),
+    MapDef("Boost Cut (No Knock)",  0x4511, 17,  1,
+           "UNCONFIRMED."),
+    MapDef("Boost Cut (Knock)",     0x4522, 17,  1,
+           "UNCONFIRMED."),
+    MapDef("Idle Ignition",         0x447B, 16,  1,
+           "UNCONFIRMED."),
+    MapDef("WOT Enrichment",        0x4541, 17,  1,
+           "UNCONFIRMED."),
+]
+
+FAMILY_MAPS[MAP_FAMILY_DF3_ABF] = DF3_ABF_MAPS
+FAMILY_MAPS[MAP_FAMILY_DF3_ABA] = DF3_ABA_MAPS
+FAMILY_MAPS["DF3_9A"] = DF3_ABF_MAPS   # 9A shares ABF layout (presumed)
+
+# ── Digifant 3 reset vectors ─────────────────────────────────────────────────
+# ABF (8051): reset is at 0x0000, bytes [0x02, HH, LL] (LJMP).
+#   Different from HD6303 which puts vector at 0x7FFE.
+#   Detection: check rom[0] == 0x02 AND target address in Digi3 range.
+# ABA (HD6303 presumed): vector at 0x7FFE like Digi 1/2.
+#   UNCONFIRMED — add entries when ROMs arrive.
+
+# ── Digifant 3 known CRCs ────────────────────────────────────────────────────
+# None yet — awaiting ROM collection.
+
+# ── Digifant 3 code patches / immo ───────────────────────────────────────────
+# See immo_patches.py for the full immobilizer bypass framework.
+CODE_PATCHES_DF3_ABF = {}   # Populated in immo_patches.py when ROMs confirmed
+CODE_PATCHES_DF3_ABA = {
+    "digilag_lo": dict(addr=0x0000, stock=b'\x01\x00', patch=b'\x00\x00',
+                       label="Digilag (low RPM) — ADDR UNCONFIRMED"),
+    "digilag_hi": dict(addr=0x0000, stock=b'\x03\x00', patch=b'\x00\x00',
+                       label="Digilag (high RPM) — ADDR UNCONFIRMED"),
+}
+VARIANT_PATCHES[VARIANT_DF3_ABF] = CODE_PATCHES_DF3_ABF
+VARIANT_PATCHES[VARIANT_DF3_ABA] = CODE_PATCHES_DF3_ABA
+VARIANT_PATCHES[VARIANT_DF3_9A]  = CODE_PATCHES_DF3_ABF
+FAMILY_PATCHES[MAP_FAMILY_DF3_ABF] = CODE_PATCHES_DF3_ABF
+FAMILY_PATCHES[MAP_FAMILY_DF3_ABA] = CODE_PATCHES_DF3_ABA
+
+
+# ===========================================================================
+# UPDATED DETECTION — DF2 and DF3 hooks
+# ===========================================================================
+# The main detect_rom() function above handles Digi 1.
+# These helpers extend detection for DF2 and DF3 without modifying detect_rom().
+
+def detect_rom_family(rom_data: bytes) -> Optional['DetectionResult']:
+    """
+    Extended detection covering Digifant 2 and 3 in addition to Digi 1.
+
+    Returns DetectionResult if DF2 or DF3 is suspected, else None.
+    Caller should try this FIRST; if None, fall back to detect_rom() for Digi 1.
+
+    Detection logic:
+      DF3 ABF (8051): rom[0] == 0x02 (LJMP) AND reset target in 0x0400-0x2000
+                      AND rom is NOT an HD6303 ROM (no 0x41 fill signature).
+      DF3 ABA:        HD6303 reset vector, but different rev_addr from known Digi1 vectors.
+      DF2:            HD6303 reset vector not in Digi 1 RESET_VECTORS dict.
+
+    STATUS: This is a skeleton. Full scoring will be calibrated once ROMs arrive.
+    """
+    if len(rom_data) < 0x8000:
+        rom_data = rom_data + bytes(0x8000 - len(rom_data))
+    data = rom_data[:0x8000]
+
+    crc = zlib.crc32(data) & 0xFFFFFFFF
+    sensor_kpa, sensor_method = detect_map_sensor(data)
+
+    # ── DF3 ABF / 9A detection (8051 CPU) ────────────────────────────────────
+    # 8051 ROMs: byte 0 = 0x02 (LJMP), bytes 1-2 = target address big-endian
+    # HD6303 ROMs: 0x41 fill in lower 16KB, vector at 0x7FFE
+    fill_lo = sum(1 for b in data[:0x4000] if b == 0x41) / 0x4000
+    if data[0] == 0x02 and fill_lo < 0.05:
+        reset_target = (data[1] << 8) | data[2]
+        if 0x0400 <= reset_target <= 0x2000:
+            return DetectionResult(
+                variant=VARIANT_DF3_ABF,
+                family=MAP_FAMILY_DF3_ABF,
+                label=VARIANT_LABELS[VARIANT_DF3_ABF],
+                confidence="MEDIUM",
+                method=f"DF3 ABF heuristic: 8051 LJMP reset → 0x{reset_target:04X}",
+                cal="UNKNOWN",
+                rev_addr=None,
+                crc32=crc,
+                warnings=[
+                    "Digifant 3 ABF (8051 CPU) detected by heuristic.",
+                    "Map addresses UNCONFIRMED — submit ROM to confirm.",
+                    "Immobilizer present — see Hardware tab for bypass patch.",
+                ],
+                map_sensor_kpa=sensor_kpa,
+            )
+
+    # ── DF2 / DF3 ABA detection (HD6303 CPU, unknown reset vector) ───────────
+    # Reset vector at 0x7FFE-0x7FFF, not in Digi 1 RESET_VECTORS table
+    vec_bytes = data[0x7FFE:0x8000]
+    vec_str   = f"{vec_bytes[0]:02X}{vec_bytes[1]:02X}"
+
+    if vec_str not in RESET_VECTORS and fill_lo > 0.30:
+        # Has Digifant fill signature but unknown reset vector — likely DF2 or DF3 ABA
+        # Distinguish by rev_addr heuristic: DF2 and DF3 ABA rev limits
+        # are in a different range than Digi 1's 0x4BF2/0x4456/0x5BC2
+        def _plausible_rev(addr: int) -> bool:
+            if addr + 2 > len(data): return False
+            raw = (data[addr] << 8) | data[addr + 1]
+            if raw == 0: return False
+            return 4000 <= (30_000_000 // raw) <= 10000
+
+        # DF3 ABA has immo — check for known part number at 0x7F00 area
+        id_chunk = ''.join(chr(b) if 32 <= b <= 126 else '' for b in data[0x7F00:0x7F30])
+        is_aba = any(pn in id_chunk.replace(' ', '') for pn in
+                     ['037906025', '037906023', '1H0906025'])
+
+        variant  = VARIANT_DF3_ABA if is_aba else VARIANT_DF2_2E
+        family   = MAP_FAMILY_DF3_ABA if is_aba else MAP_FAMILY_DF2
+        warnings = [
+            f"Digifant {'3 ABA' if is_aba else '2'} heuristic: HD6303 fill detected, "
+            f"reset vector {vec_str} not in Digi 1 table.",
+            "Map addresses UNCONFIRMED — submit ROM to confirm.",
+        ]
+        if is_aba:
+            warnings.append("Immobilizer likely present — see Hardware tab for bypass patch.")
+
+        return DetectionResult(
+            variant=variant,
+            family=family,
+            label=VARIANT_LABELS.get(variant, variant),
+            confidence="MEDIUM",
+            method=f"DF2/DF3-ABA heuristic: 0x41 fill={fill_lo:.0%}, vec {vec_str}",
+            cal="UNKNOWN",
+            rev_addr=None,
+            crc32=crc,
+            warnings=warnings,
+            map_sensor_kpa=sensor_kpa,
+        )
+
+    return None   # Digi 1 — let detect_rom() handle it
+
+
+def detect_rom_all(rom_data: bytes) -> 'DetectionResult':
+    """
+    Full detection covering Digi 1, 2, and 3.
+    Replaces direct calls to detect_rom() in main_window.py for the next version.
+    """
+    # Try DF2/DF3 first
+    result = detect_rom_family(rom_data)
+    if result is not None:
+        return result
+    # Fall back to Digi 1
+    return detect_rom(rom_data)

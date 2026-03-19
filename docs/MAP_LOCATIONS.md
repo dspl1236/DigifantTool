@@ -159,3 +159,74 @@ Not 250kPa — fuel avg 159.8 is identical range to standard 200kPa G60.
 | Ignition vs IAT | 0x48AD | 16×1 | |
 | **Rev Limit** | **0x4456** | 16-bit | `30,000,000 / 16bit = RPM` |
 
+
+---
+
+# Digifant 2 — Map Locations
+
+> **STATUS: UNCONFIRMED** — all addresses are placeholders estimated from community posts
+> and similarity to Digi 1 layout. DO NOT tune from these addresses until confirmed
+> against a real chip read. Submit ROMs to help confirm.
+
+Engines covered: **2E** (2.0 8v Golf 2 / Jetta 2 / Scirocco), **PF/RV** (1.8 8v Golf 2)
+CPU: HD6303 (same family as Digi 1)
+ROM: 27C256 (32KB)
+Ignition formula: `(210 - raw) / 2.86 = °BTDC` (assumed same as Digi 1 — UNCONFIRMED)
+
+| Map | Address | Size | Notes |
+|-----|---------|------|-------|
+| Ignition | 0x4004 | 16×16 | Formula unconfirmed. ADDRESSES UNCONFIRMED. |
+| Fuel | 0x4104 | 16×16 | ADDRESSES UNCONFIRMED. |
+| Warm Up Enrichment | 0x42DD | 17×1 | UNCONFIRMED. |
+| Boost Cut (No Knock) | 0x450F | 17×1 | UNCONFIRMED. |
+| Boost Cut (Knock) | 0x4520 | 17×1 | UNCONFIRMED. |
+| WOT Enrichment | 0x4541 | 17×1 | UNCONFIRMED. |
+
+---
+
+# Digifant 3 — Map Locations
+
+> **STATUS: UNCONFIRMED** — all addresses are placeholders. DO NOT tune from these.
+
+## ABF 2.0 16v (Siemens 5WP4)
+
+CPU: Siemens SAB80C535 (Intel 8051 derivative — **different from HD6303**)
+ROM: 27C256 (32KB) or 27C512 (64KB doubled)
+Detection: `rom[0] == 0x02` (8051 LJMP opcode at reset vector) + no 0x41 fill
+Has immobilizer — see immo_patches.py for bypass framework.
+Ignition formula: **UNCONFIRMED** — 8051 encoding likely differs from HD6303's `(210-raw)/2.86`
+
+| Map | Address | Size | Notes |
+|-----|---------|------|-------|
+| Ignition | 0x5C00 | 16×16 | Formula UNCONFIRMED. Address UNCONFIRMED. |
+| Fuel | 0x6C00 | 16×16 | UNCONFIRMED. |
+| Warm Up Enrichment | 0x4500 | 17×1 | UNCONFIRMED. |
+| Boost Cut (No Knock) | 0x4600 | 17×1 | UNCONFIRMED. |
+| Idle Ignition | 0x4700 | 16×1 | UNCONFIRMED. |
+
+## ABA / ADY 2.0 8v
+
+CPU: Presumed HD6303 (same as Digi 1/2) — UNCONFIRMED
+Has immobilizer.
+
+| Map | Address | Size | Notes |
+|-----|---------|------|-------|
+| Ignition | 0x5800 | 16×16 | UNCONFIRMED. |
+| Fuel | 0x6800 | 16×16 | UNCONFIRMED. |
+| Idle Ignition | 0x447B | 16×1 | UNCONFIRMED. |
+
+## Immobilizer Bypass (Digi 3)
+
+See `digitool/immo_patches.py` for the full framework.
+
+Context: ABF into Golf 2 / early Jetta swaps require bypassing the immo check
+because there is no instrument cluster transponder ring to wire in.
+The bypass is 2 bytes (NOP×2 replacing a conditional jump after the immo pin check).
+All patch addresses are UNCONFIRMED — addresses will be added when ROMs are disassembled.
+
+How to find the patch address (for ABF, 8051 CPU):
+1. Open 32KB ROM in Ghidra with 8051 plugin
+2. Follow LJMP from reset vector (rom[0:3])
+3. Find subroutine that reads an external input pin into accumulator A
+4. The conditional jump (JZ 0x60 or JNZ 0x70) after that call is the immo check
+5. Replace with NOP NOP (0x00 0x00) — test on bench before driving
