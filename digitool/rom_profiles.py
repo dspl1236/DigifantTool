@@ -835,6 +835,18 @@ def detect_rom(rom_data: bytes) -> DetectionResult:
 #   All addresses marked UNCONFIRMED will be updated when ROMs arrive.
 #   DO NOT tune from these addresses until confirmed against a real chip.
 #
+# ARCHITECTURE (confirmed — xjamiex.com MK2 resource + VW Pro Training Manual):
+#   DF2 has a SEPARATE 7-pin ignition control unit (amplifier/power stage).
+#     ECU pin 25 → Ign unit pin 6 (trigger signal, Green/Blue US, Green EU)
+#     Ign unit pin 1 → Coil pin 1 (primary drive)
+#   This differs from G60 Corrado which routes coil DIRECT from ECU pin 25.
+#   G60 "Digifant I" branding = same ECU pinout as DF2, just no ign module.
+#   DF2 ECU: 25-pin connector. USA: idle/WOT switch only (no throttle pot).
+#   EU CE2: same layout, different wire colours, throttle pot added on some.
+#   Inputs: Hall sender (dist.), MAF pot, ECT, IAT, O2S, knock sensor.
+#   Outputs: batch-fired injectors (parallel), ISV (2 wires), fuel pump,
+#            ign controller signal.
+#
 # Known ECU part numbers:
 #   2E engine: 037906023B, 037906023C, 037906023D, 037906023E
 #   PF engine: 037906023, 037906023A
@@ -922,6 +934,42 @@ CODE_PATCHES_DF2 = {
 VARIANT_PATCHES[VARIANT_DF2_2E] = CODE_PATCHES_DF2
 VARIANT_PATCHES[VARIANT_DF2_PF] = CODE_PATCHES_DF2
 FAMILY_PATCHES[MAP_FAMILY_DF2]  = CODE_PATCHES_DF2
+
+# DF2 ECU pin reference (25-pin, confirmed from xjamiex.com MK2 resource)
+# Useful for bench testing and KWP wiring identification.
+DF2_ECU_PINS = {
+    1:  "Starter Power",
+    2:  "Oxygen Sensor",
+    3:  "Fuel Pump",
+    4:  "Knock Sensor (signal)",
+    5:  "Knock Sensor (ground)",
+    6:  "Ground (sensors)",
+    7:  "Knock Sensor shield",
+    8:  "Distributor pin 3 (positive / power)",
+    9:  "Intake Air Temperature Sensor",
+    10: "Coolant Temperature Sensor",
+    11: "Idle / WOT Switch",
+    12: "Injector Power",
+    13: "Ground",
+    14: "Power from Control Unit Relay",
+    16: "A/C compressor signal",
+    17: "Airflow Sensor Potentiometer (wiper)",
+    18: "Distributor pin 2 (Hall sender signal)",
+    19: "Ground",
+    20: "Malfunction Light / Switch",
+    21: "Airflow Sensor Potentiometer (supply)",
+    22: "Idle Stabilizer Valve (coil A)",
+    23: "Idle Stabilizer Valve (coil B)",
+    25: "To Ignition Control Unit pin 6",
+}
+
+# DF2 Ignition Control Unit (separate 7-pin module — NOT in G60 which has coil direct)
+DF2_IGN_UNIT_PINS = {
+    1: "Coil pin 1 (primary output)",
+    2: "Ground",
+    4: "Start / Run power",
+    6: "From ECU pin 25 (trigger signal)",
+}
 
 
 # ===========================================================================
