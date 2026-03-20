@@ -141,6 +141,54 @@ PATCH_DB: list[ImmoPatch] = [
         ),
     ),
 
+    # ── ABF — Strategy B: Patch the immo FAIL STORE gates (alternative approach) ──
+    # Alternative to Strategy A (patching call gates at 0x4C1C/0x4C32).
+    # These three BNE instructions gate the STORES of immo fail codes into RAM.
+    # Pattern: LDAA #0x35 / JSR 0xE46E (immo check subroutine) / CMPB #0x00 / BNE +2
+    # If BNE taken (mismatch): STAA 0x6A/6B/6D → sets kill flag
+    # Patching BNE→NOP NOP: always falls through → kill flag never set
+    # Three sites cover all three immo challenge bytes (0x35, 0x36, 0x37).
+    # Strategy B is more targeted but requires patching 3 sites vs Strategy A's 2.
+    # RECOMMENDATION: Use Strategy A (0x4C1C + 0x4C32) for production use.
+    # Strategy B confirmed by binary analysis as a valid alternative approach.
+    ImmoPatch(
+        ecu_pn      = "037906024G (ABF — Strategy B site 1, challenge byte 0x35)",
+        rom_crc     = 0x78462536,
+        patch_addr  = 0x2CC8,       # File offset (CPU 0xACC8)
+        original    = bytes([0x26, 0x02]),   # BNE +2 (HD6303)
+        patched     = bytes([0x01, 0x01]),   # NOP NOP
+        description = "ABF immo bypass Strategy B — patch fail-store gate for byte 0x35. "
+                      "Alternative to Strategy A. Apply all 3 Strategy B sites together.",
+        confidence  = "PROVISIONAL",
+        notes       = (
+            "Context: LDAA #35 / JSR 0xE46E / CMPB #0 / BNE +2 / STAA 0x6A\n"
+            "If BNE taken: immo fail code stored to RAM 0x6A (engine kill trigger).\n"
+            "NOP NOP prevents the fail store — engine proceeds normally.\n"
+            "Must patch all three Strategy B sites (0x2CC8 + 0x2CD3 + 0x2CDE).\n"
+            "Prefer Strategy A (0x4C1C + 0x4C32) — fewer patches, earlier in chain."
+        ),
+    ),
+    ImmoPatch(
+        ecu_pn      = "037906024G (ABF — Strategy B site 2, challenge byte 0x36)",
+        rom_crc     = 0x78462536,
+        patch_addr  = 0x2CD3,
+        original    = bytes([0x26, 0x02]),
+        patched     = bytes([0x01, 0x01]),
+        description = "ABF immo bypass Strategy B — patch fail-store gate for byte 0x36.",
+        confidence  = "PROVISIONAL",
+        notes       = "Context: LDAA #36 / JSR 0xE46E / CMPB #0 / BNE +2 / STAA 0x6B",
+    ),
+    ImmoPatch(
+        ecu_pn      = "037906024G (ABF — Strategy B site 3, challenge byte 0x37)",
+        rom_crc     = 0x78462536,
+        patch_addr  = 0x2CDE,
+        original    = bytes([0x26, 0x02]),
+        patched     = bytes([0x01, 0x01]),
+        description = "ABF immo bypass Strategy B — patch fail-store gate for byte 0x37.",
+        confidence  = "PROVISIONAL",
+        notes       = "Context: LDAA #37 / JSR 0xE46E / CMPB #0 / BNE +2 / STAA 0x6D",
+    ),
+
     ImmoPatch(
         ecu_pn      = "1H0906025 / 1H0906025A / 1H0906025B (ABF later variants)",
         rom_crc     = None,
