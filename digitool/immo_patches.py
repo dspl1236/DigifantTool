@@ -42,6 +42,12 @@ STATUS
 v0.7.2: CPU confirmed HD6303. Patch addresses UNCONFIRMED — placeholders below.
   Addresses will be populated when ROMs are disassembled in Ghidra.
   See docs/MAP_LOCATIONS.md for the full HD6303 Ghidra workflow.
+
+v0.7.3: ABF patch addresses CONFIRMED by direct binary analysis (March 2026).
+  Site 1: file 0x4C1C (CPU 0xCC1C) — BEQ +25 — primary immo gate
+  Site 2: file 0x4C32 (CPU 0xCC32) — BNE +3  — secondary immo gate
+  Both sites gate entry to subroutine 0xCC3B (immo countdown reader/decrementer).
+  Confidence: PROVISIONAL (addresses confirmed by analysis, bench test pending).
 """
 
 from __future__ import annotations
@@ -82,24 +88,56 @@ PATCH_DB: list[ImmoPatch] = [
     # CPU confirmed HD6303 from binary analysis of 037906024G (5WP4307).
     # NOT 8051. NOP = 0x01. Conditional branches = BNE (0x26) / BEQ (0x27).
     # ROM mapped at CPU 0x8000–0xFFFF. Import Ghidra at base address 0x8000.
+    #
+    # PATCH ADDRESSES CONFIRMED by direct binary analysis (March 2026):
+    #   Method: scan BNE/BEQ where fail path leads to rare JSR subroutine.
+    #   Subroutine 0xCC3B: F6 01 11 (LDAB 0x0111) — reads immo countdown counter
+    #   Two entry points both gate access to the immo check routine.
+    #
+    # Site 1: CPU 0xCC1C (file 0x4C1C) — BEQ +25
+    #   Context: 7D 01 61 27 19 = TST 0x0161, BEQ +0x19 → JSR 0xCC3B
+    #   TST 0x0161 checks if immo init has run; BEQ calls immo status checker
+    #
+    # Site 2: CPU 0xCC32 (file 0x4C32) — BNE +3
+    #   Context: 96 C8 84 03 26 03 = LDAA 0xC8, ANDA #3, BNE +3 → JSR 0xCC3B
+    #   Tests lower 2 bits of 0xC8; BNE calls immo counter decrement
+    #
+    # Both sites must be patched (NOP NOP) for a complete bypass.
+    # Patch Site 1 (primary gate, recommended first):
     ImmoPatch(
         ecu_pn      = "037906024G / 037906024H (ABF Golf 3 GTI)",
         rom_crc     = 0x78462536,   # 037906024G 5WP4307 WINTER DATEN_07
-        patch_addr  = 0x0000,   # UNCONFIRMED — placeholder
-        original    = bytes([0x26, 0x00]),   # BNE + offset (HD6303)
+        patch_addr  = 0x4C1C,       # File offset (CPU 0xCC1C) — CONFIRMED
+        original    = bytes([0x27, 0x19]),   # BEQ +25 (HD6303)
         patched     = bytes([0x01, 0x01]),   # NOP NOP (HD6303 NOP = 0x01)
-        description = "ABF immo bypass — replace BNE (immo flag check) with NOP×2.",
-        confidence  = "UNCONFIRMED",
+        description = "ABF immo bypass Site 1 — BEQ gate to immo check subroutine. "
+                      "Apply both Site 1 and Site 2 for complete bypass.",
+        confidence  = "PROVISIONAL",   # addresses confirmed, bench test pending
         notes       = (
-            "CPU confirmed HD6303 (NOT 8051). NOP = 0x01.\n"
-            "ROM mapped at CPU 0x8000–0xFFFF. Physical = CPU − 0x8000.\n"
-            "To find the real address:\n"
-            "  1. Open 32KB ROM in Ghidra, Language: Motorola 6800, base=0x8000.\n"
-            "  2. Navigate to reset vector CPU 0x9200 (phys 0x1200).\n"
-            "  3. Find subroutine reading external I/O pin (LDAA ext address).\n"
-            "  4. Find BNE (0x26) or BEQ (0x27) after that call — target kills injection.\n"
-            "  5. Replace 2 bytes with NOP NOP (0x01 0x01).\n"
-            "  6. Bench test. Update rom_crc + patch_addr + original bytes."
+            "CPU confirmed HD6303. ROM mapped CPU 0x8000–0xFFFF (file = CPU - 0x8000).\n"
+            "Subroutine 0xCC3B: reads immo countdown at RAM 0x0111, decrements on fail.\n"
+            "Site 1 (this patch): TST 0x0161, BEQ +25 → calls immo checker if 0x0161 == 0.\n"
+            "Site 2 (patch_addr 0x4C32): BNE +3 → second entry to immo checker.\n"
+            "Apply BOTH sites. After patching, verify ROM checksum recalculation.\n"
+            "PROVISIONAL: addresses confirmed by binary analysis, bench test pending."
+        ),
+    ),
+
+    # Patch Site 2 (secondary gate, apply together with Site 1):
+    ImmoPatch(
+        ecu_pn      = "037906024G / 037906024H (ABF Golf 3 GTI) — Site 2",
+        rom_crc     = 0x78462536,
+        patch_addr  = 0x4C32,       # File offset (CPU 0xCC32) — CONFIRMED
+        original    = bytes([0x26, 0x03]),   # BNE +3 (HD6303)
+        patched     = bytes([0x01, 0x01]),   # NOP NOP
+        description = "ABF immo bypass Site 2 — BNE gate to immo counter decrement. "
+                      "Apply together with Site 1 (0x4C1C) for complete bypass.",
+        confidence  = "PROVISIONAL",
+        notes       = (
+            "LDAA 0xC8, ANDA #3, BNE +3 → JSR 0xCC3B (immo counter decrement).\n"
+            "Tests lower 2 bits of RAM 0xC8 — set during immo fail path.\n"
+            "Without Site 2, immo counter decrements independently and may still cut injection.\n"
+            "Apply both sites for a complete bypass."
         ),
     ),
 
