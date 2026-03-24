@@ -2,6 +2,10 @@
 
 ROM editor for Bosch Digifant 1, 2, and 3 ECUs. Covers G60 supercharged engines (Corrado, Golf, Jetta, Passat), G40 Polo, Digifant 2 (2.0 8v and 1.8 8v Golf 2 / Jetta 2), and Digifant 3 (ABF 2.0 16v, ABA 2.0 8v, 9A Corrado).
 
+[![Build](https://github.com/dspl1236/DigiTool/actions/workflows/build.yml/badge.svg)](https://github.com/dspl1236/DigiTool/actions/workflows/build.yml)
+[![Download](https://img.shields.io/github/v/release/dspl1236/DigiTool?label=Download&logo=github)](https://github.com/dspl1236/DigiTool/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 All supported ECUs use the **Hitachi HD6303 CPU** (Motorola 6800 derivative), 27C256 / 27C512 EPROM (32KB / 64KB), and the same ignition formula: `(210 − raw) / 2.86 = °BTDC`.
 
 > **⚠ Work in Progress — Use at Your Own Risk**

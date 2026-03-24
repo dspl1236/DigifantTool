@@ -31,22 +31,22 @@ jobs:
         run: |
           import os, re
           text = open("digitool/version.py").read()
-          ver  = re.search(r'APP_VERSION\s*=\s*["\']([^"\']+)["\']', text).group(1)
+          ver  = re.search(r'APP_VERSION\s*=\s*["\x27]([^"\x27]+)["\x27]', text).group(1)
           exe  = f"DigiTool-v{ver}"
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
               f.write(f"version={ver}\n")
               f.write(f"exe_name={exe}\n")
 
       - name: Build EXE
-        run: |
-          python -m PyInstaller `
-            --onefile `
-            --windowed `
-            --name DigiTool-v${{ steps.get_version.outputs.version }} `
-            --hidden-import PyQt5.QtCore `
-            --hidden-import PyQt5.QtGui `
-            --hidden-import PyQt5.QtWidgets `
-            digitool/main.py
+        run: >
+          python -m PyInstaller
+          --onefile
+          --windowed
+          --name DigiTool-v${{ steps.get_version.outputs.version }}
+          --hidden-import PyQt5.QtCore
+          --hidden-import PyQt5.QtGui
+          --hidden-import PyQt5.QtWidgets
+          digitool/main.py
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -69,6 +69,33 @@ jobs:
           name: DigiTool-Windows
           path: dist/
 
+      - name: Write release notes
+        run: |
+          VERSION="${{ needs.build-windows.outputs.version }}"
+          cat > notes.md << NOTES
+          ## DigiTool v${VERSION}
+
+          **Digifant 1 / 2 / 3 ECU Editor**
+
+          Download DigiTool-v${VERSION}.exe and run — no install needed.
+
+          ### Supported ECUs
+          - Digifant 1 G60: Corrado / Golf / Jetta / Passat Syncro / 16v Limited
+          - Digifant 1 G60 Triple-Map: Corrado SLS
+          - Digifant 1 G40: Polo Mk3 / Polo Mk2 (early)
+          - Digifant 2: 2.0 8v / 1.8 8v Golf 2 / Jetta 2 (in progress)
+          - Digifant 3: ABF 2.0 16v / ABA 2.0 8v / 9A Corrado (in progress)
+
+          ### Features
+          - ROM variant detection (CRC32 + reset vector fingerprinting)
+          - Ignition and Fuel 16x16 heatmap editors
+          - Correction tables (warmup, ECT, IAT, boost cut, etc.)
+          - Code patch flags (Digilag, Open Loop Lambda, ISV disable)
+          - Full hex view with region labels
+          - ROM diff / compare tool
+          - Save edited ROM back to .BIN
+          NOTES
+
       - name: Delete existing latest release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -81,28 +108,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create latest \
-            --title "DigiTool v${{ needs.build-windows.outputs.version }} — Latest Build" \
-            --notes "## DigiTool v${{ needs.build-windows.outputs.version }}
-
-          **Digifant 1 G60 / G40 ECU Editor — Python / PyQt5 desktop app**
-
-          Download \`DigiTool-v${{ needs.build-windows.outputs.version }}.exe\` and run — no install needed.
-
-          ### Supported ECUs
-          - G60 Corrado / Golf / Jetta / Passat Syncro / 16v Limited
-          - G60 Triple-Map (Corrado SLS)
-          - G40 Polo Mk3
-          - G40 Polo Mk2 (early)
-
-          ### Features
-          - ROM variant detection (CRC32 + reset vector fingerprinting)
-          - Ignition and Fuel 16x16 heatmap editors
-          - Correction tables (warmup, ECT, IAT, boost cut, etc.)
-          - Code patch flags (Digilag, Open Loop Lambda, ISV disable)
-          - Full hex view with region labels
-          - ROM diff / compare tool
-          - Save edited ROM back to .BIN
-
-          *VW Digifant 1 — G60/G40 ECU Editor*" \
+            --title "DigiTool v${{ needs.build-windows.outputs.version }} -- Latest Build" \
+            --notes-file notes.md \
             --prerelease \
             "dist/DigiTool-v${{ needs.build-windows.outputs.version }}.exe"
