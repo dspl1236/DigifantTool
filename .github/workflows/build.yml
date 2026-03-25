@@ -5,12 +5,12 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
-  build-windows:
+  build-and-release:
     runs-on: windows-latest
-    outputs:
-      version: ${{ steps.get_version.outputs.version }}
-      exe_name: ${{ steps.get_version.outputs.exe_name }}
 
     steps:
       - uses: actions/checkout@v4
@@ -26,7 +26,7 @@ jobs:
           pip install PyQt5 pyinstaller
 
       - name: Get version
-        id: get_version
+        id: ver
         shell: python
         run: |
           import os, re
@@ -42,61 +42,17 @@ jobs:
           python -m PyInstaller
           --onefile
           --windowed
-          --name DigiTool-v${{ steps.get_version.outputs.version }}
+          --name DigiTool-v${{ steps.ver.outputs.version }}
           --hidden-import PyQt5.QtCore
           --hidden-import PyQt5.QtGui
           --hidden-import PyQt5.QtWidgets
           digitool/main.py
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: DigiTool-Windows
-          path: dist/DigiTool-v${{ steps.get_version.outputs.version }}.exe
-
-  release:
-    needs: build-windows
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download EXE
-        uses: actions/download-artifact@v4
-        with:
-          name: DigiTool-Windows
-          path: dist/
-
-      - name: Write release notes
-        run: |
-          VERSION="${{ needs.build-windows.outputs.version }}"
-          cat > notes.md << NOTES
-          ## DigiTool v${VERSION}
-
-          **Digifant 1 / 2 / 3 ECU Editor**
-
-          Download DigiTool-v${VERSION}.exe and run — no install needed.
-
-          ### Supported ECUs
-          - Digifant 1 G60: Corrado / Golf / Jetta / Passat Syncro / 16v Limited
-          - Digifant 1 G60 Triple-Map: Corrado SLS
-          - Digifant 1 G40: Polo Mk3 / Polo Mk2 (early)
-          - Digifant 2: 2.0 8v / 1.8 8v Golf 2 / Jetta 2 (in progress)
-          - Digifant 3: ABF 2.0 16v / ABA 2.0 8v / 9A Corrado (in progress)
-
-          ### Features
-          - ROM variant detection (CRC32 + reset vector fingerprinting)
-          - Ignition and Fuel 16x16 heatmap editors
-          - Correction tables (warmup, ECT, IAT, boost cut, etc.)
-          - Code patch flags (Digilag, Open Loop Lambda, ISV disable)
-          - Full hex view with region labels
-          - ROM diff / compare tool
-          - Save edited ROM back to .BIN
-          NOTES
+      - name: Verify EXE
+        run: dir dist\
 
       - name: Delete existing latest release
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -104,11 +60,34 @@ jobs:
           git push origin :refs/tags/latest 2>/dev/null || true
 
       - name: Create latest release
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create latest \
-            --title "DigiTool v${{ needs.build-windows.outputs.version }} -- Latest Build" \
-            --notes-file notes.md \
-            --prerelease \
-            "dist/DigiTool-v${{ needs.build-windows.outputs.version }}.exe"
+            --title "DigiTool v${{ steps.ver.outputs.version }} — Latest Build" \
+            --notes "## DigiTool v${{ steps.ver.outputs.version }}
+
+          **Digifant 1 / 2 / 3 ECU ROM Editor**
+
+          Download DigiTool-v${{ steps.ver.outputs.version }}.exe and run — no install needed.
+
+          ### Supported ECUs
+          - **Digifant 1 — G60:** Corrado, Golf, Jetta, Passat Syncro, 16v Limited, Triple-Map / SLS
+          - **Digifant 1 — G40:** Polo Mk3, Polo Mk2 (early)
+          - **Digifant 2:** Golf 2 / Jetta 2 2.0 8v, 1.8 8v (map addresses unconfirmed)
+          - **Digifant 3:** ABF 2.0 16v, ABA 2.0 8v, 9A Corrado (immo bypass provisional)
+
+          ### Features
+          - ROM variant detection (CRC32 + reset vector fingerprinting)
+          - Ignition and fuel 16x16 heatmap editors
+          - 30+ correction/calibration tables
+          - Code patch flags (Digi-Lag, open loop lambda, ISV disable, SNS lambda)
+          - Immobilizer bypass tab (DF3, provisional)
+          - Full hex view with labeled regions
+          - ROM compare / diff tool
+          - Save as 32KB or 64KB mirrored .bin
+
+          ---
+          *Work in progress — always back up your original ROM before editing.*" \
+            "dist/DigiTool-v${{ steps.ver.outputs.version }}.exe"
