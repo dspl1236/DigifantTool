@@ -61,13 +61,15 @@ jobs:
         run: |
           gh release delete latest --yes 2>/dev/null || true
           git push origin :refs/tags/latest 2>/dev/null || true
+          gh release delete "v${{ steps.ver.outputs.version }}" --yes 2>/dev/null || true
+          git push origin ":refs/tags/v${{ steps.ver.outputs.version }}" 2>/dev/null || true
 
       - name: Create latest release
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create latest \
+          gh release create "v${{ steps.ver.outputs.version }}" \
             --title "DigiTool v${{ steps.ver.outputs.version }} — Latest Build" \
             --notes "## DigiTool v${{ steps.ver.outputs.version }}
 

@@ -6,6 +6,8 @@ ROM editor for Bosch Digifant 1, 2, and 3 ECUs. Covers G60 supercharged engines 
 [![Download](https://img.shields.io/github/v/release/dspl1236/DigiTool?label=Download&logo=github)](https://github.com/dspl1236/DigiTool/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
+**[Download DigiTool.exe (Windows)](https://github.com/dspl1236/DigiTool/releases/latest)**
+
 All supported ECUs use the **Hitachi HD6303 CPU** (Motorola 6800 derivative), 27C256 / 27C512 EPROM (32KB / 64KB), and the same ignition formula: `(210 − raw) / 2.86 = °BTDC`.
 
 > **⚠ Work in Progress — Use at Your Own Risk**
