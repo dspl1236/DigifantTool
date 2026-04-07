@@ -350,11 +350,15 @@ The following items are known gaps that need community input or further reverse-
 
 Confirmed from binary analysis of stock G40 (0261.200.330) vs 7k rev limit mod, March 2026.
 
-### DF2 / DF3 map addresses and code patches — NOT YET BUILT
+### DF2 / DF3 support — PARTIAL
 
-DigiTool currently covers **Digifant 1 only** (G60 and G40 variants). DF2 and DF3 variants are not yet implemented — they are completely different firmware (97% byte difference from G60) and need their own profiles, map addresses, and code patch addresses.
+Detection and basic map definitions exist for DF3 ABF (037906024G). However, map addresses are **unconfirmed** and code patches are incomplete. DF2 (2E, PF) has no profile yet. Both are completely different firmware from DF1 (97% byte difference from G60).
 
-**What's needed:** ROM dumps from DF2 (2E, PF) and DF3 (ABA, ADY, ABF) variants. One stock DF3 ABF dump (037906024G) has been collected. Map hunting and profile building are the next step.
+**Current state:**
+- DF3 ABF: Detection works, immo patch addresses identified (see below), fuel/ign map addresses need verification
+- DF2 (2E/PF): No ROM dumps collected, no profile built
+
+**What's needed:** Additional ROM dumps from DF2 and DF3 variants for map hunting and verification. DF3 ABF fuel/ign map addresses need confirmation via Ghidra disassembly or stock vs tuned ROM diff.
 
 ### Immobilizer patches are PROVISIONAL
 
